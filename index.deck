@@ -16,10 +16,10 @@ takeButton:{"type":"button","size":[58,20],"pos":[256,242],"script":"card1.1","t
 useButton:{"type":"button","size":[58,20],"pos":[320,242],"script":"card1.2","text":"Use"}
 lookButton:{"type":"button","size":[58,20],"pos":[384,242],"script":"card1.3","text":"Look"}
 talkButton:{"type":"button","size":[58,20],"pos":[448,242],"script":"card1.4","text":"Talk"}
-textField:{"type":"field","size":[512,71],"pos":[0,272],"script":"card1.5","scrollbar":1,"style":"code","value":"A fragile sanctuary against the cold, dark expanse of endless space."}
+textField:{"type":"field","size":[512,71],"pos":[0,272],"scrollbar":1,"value":"You clicked move"}
 imageCanvas:{"type":"canvas","size":[313,210],"pos":[192,24],"scale":1}
 inventoryCanvas:{"type":"canvas","size":[176,240],"pos":[8,23],"scale":1}
-action:{"type":"field","size":[25,8],"pos":[479,264],"script":"card1.6","show":"none","border":0,"style":"plain","value":"move"}
+action:{"type":"field","size":[25,8],"pos":[479,264],"script":"card1.5","show":"none","border":0,"style":"plain","value":"move"}
 
 {script:card1.0}
 on click do
@@ -57,12 +57,6 @@ end
 {end}
 
 {script:card1.5}
-on change val do
-
-end
-{end}
-
-{script:card1.6}
 on change val do
  
 end
