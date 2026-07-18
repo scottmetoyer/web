@@ -10,8 +10,9 @@ image:"%%IMG3AgABVgKEj6nL7Q+jnLTai7PevPsPhuJIluaJpurKtu4Lx/JM1/aN5/rO9/4PDAqHxKL
 button1:{"type":"button","size":[60,20],"pos":[224,304],"text":"Welcome","style":"rect"}
 
 {card:card1}
+script:"card1.7"
 {widgets}
-moveButton:{"type":"button","size":[58,20],"pos":[192,242],"script":"card1.0","text":"Move"}
+moveButton:{"type":"button","size":[58,20],"pos":[192,242],"show":"invert","script":"card1.0","text":"Move"}
 takeButton:{"type":"button","size":[58,20],"pos":[256,242],"script":"card1.1","text":"Take"}
 useButton:{"type":"button","size":[58,20],"pos":[320,242],"script":"card1.2","text":"Use"}
 lookButton:{"type":"button","size":[58,20],"pos":[384,242],"script":"card1.3","text":"Look"}
@@ -23,36 +24,31 @@ action:{"type":"field","size":[25,8],"pos":[479,264],"script":"card1.6","show":"
 
 {script:card1.0}
 on click do
- action.text:"move"
- textField.text:"You clicked move"
+ pick["move" me]
 end
 {end}
 
 {script:card1.1}
 on click do
- action.text:"take"
- textField.text:"You clicked take"
+ pick["take" me]
 end
 {end}
 
 {script:card1.2}
 on click do
- action.text:"use"
- textField.text:"You clicked use"
+ pick["use" me]
 end
 {end}
 
 {script:card1.3}
 on click do
- action.text:"look"
- textField.text:"You clicked look"
+ pick["look" me]
 end
 {end}
 
 {script:card1.4}
 on click do
- action.text:"talk"
- textField.text:"You clicked talk"
+ pick["talk" me]
 end
 {end}
 
@@ -64,7 +60,20 @@ end
 
 {script:card1.6}
 on change val do
- 
+
+end
+{end}
+
+{script:card1.7}
+on pick verb who do
+ action.text:verb
+ textField.text:"You clicked %s" format verb
+ cursors:("move","take","use","look","talk") dict ("drag","point","crosshair","default","default")
+ app.cursor:cursors[verb]
+ each b in (moveButton,takeButton,useButton,lookButton,talkButton)
+  b.show:"solid"
+ end
+ who.show:"invert"
 end
 {end}
 
