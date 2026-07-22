@@ -3,21 +3,51 @@
 A static personal site. No build system, no package manager, no server — just
 files. Edit, commit, push; the host serves the folder as-is.
 
-The landing page is an interactive 360° panorama viewer.
+The site is a set of 360° **rooms** you look around in and travel between by
+clicking hotspots painted into the space.
 
 ## Files
 
-- `index.html` — the site. A self-contained WebGL 360° panorama viewer
-  (see below). Hand-authored; edit it directly.
-- `images/` — image assets. `demo-pano.png` is the placeholder panorama the
-  viewer loads by default.
-- `make_demo_pano.py` — regenerates `images/demo-pano.png`.
+- `index.html`, `void.html`, `hall.html` — the rooms. Each is a short file that
+  names its panorama and lists its exits; everything else comes from the two
+  shared files below. `index.html` is the landing room.
+- `pano.js` — the viewer engine: GL, interaction, hotspot projection, room
+  transitions. Shared by every room.
+- `pano.css` — all the styling. Shared by every room.
+- `images/pano-*.png` — one panorama per room. Placeholders for now.
+- `make_panos.py` — regenerates those placeholder panoramas.
 - `deck.html`, `site.deck`, `index.deck`, `customize.py` — **legacy**, see below.
 
-## The 360° viewer (`index.html`)
+## Adding a room
 
-Everything is in the one file: markup, CSS, and the GL code. It raycasts an
-equirectangular (2:1) image in a fragment shader across a fullscreen triangle,
+Copy any room file and change three things: the `data-pano` image, the
+`data-room` name, and the list of exits. No other file needs touching — styling
+and behaviour come from `pano.css` / `pano.js` automatically.
+
+```html
+<body data-pano="images/pano-attic.png" data-room="The Attic" data-yaw="0" data-fov="80">
+<nav id="hotspots">
+  <a class="hotspot" href="index.html" data-yaw="120" data-pitch="4">The Plain</a>
+</nav>
+<script src="pano.js"></script>
+```
+
+`data-yaw` / `data-pitch` place an exit in the sphere, in degrees — yaw 0 is
+straight ahead and increases to the right, pitch is above/below the horizon.
+`data-yaw` / `data-pitch` / `data-fov` on `<body>` set where you are looking on
+arrival. Rooms live at the top level so the relative paths stay simple.
+
+Hotspots are real `<a>` elements projected to screen coordinates every frame,
+which is why focus, cmd-click and hover all work normally. An exit that is
+currently out of frame gets pinned to the edge of the screen, dimmed, with a
+caret showing which way to turn — otherwise you can arrive facing away from
+every exit and not know there is anywhere to go. Dragging that happens to start
+on a hotspot is treated as a look, not a click.
+
+## The viewer engine (`pano.js`)
+
+It raycasts an equirectangular
+(2:1) image in a fragment shader across a fullscreen triangle,
 which gives correct rectilinear perspective at any zoom and pitch — unlike
 scrolling a wide image sideways, which looks wrong the moment you look up.
 
@@ -55,11 +85,14 @@ and check the right thing is centered:
       --window-size=900,560 --virtual-time-budget=6000 \
       --screenshot=out.png "http://localhost:8777/?yaw=90&drift=0"
 
-In `demo-pano.png` the cardinal posts are N=red, E=yellow, S=green, W=blue, so
+In `pano-hub.png` the cardinal posts are N=red, E=yellow, S=green, W=blue, so
 a screenshot immediately shows whether orientation is right. Note that
 `requestAnimationFrame` is throttled under headless virtual time, so the
 on-screen readout won't update — screenshot the rendered frame instead of
 scraping the DOM.
+
+Navigation can be checked the same way: inject a script that clicks a hotspot,
+then `--dump-dom` and read the `<title>` to see which room you ended up in.
 
 ## Panorama images
 
@@ -71,9 +104,13 @@ bottom rows each collapse to a single point, the left and right edges must wrap,
 and vertical lines in the world stay vertical columns in the image while every
 other straight line becomes a sine curve.
 
-`make_demo_pano.py` renders one procedurally with numpy + zlib (PNG written by
-hand to avoid a Pillow dependency) and is a decent template for code-generated
-panoramas.
+`make_panos.py` renders the current placeholders procedurally with numpy + zlib
+(PNG written by hand to avoid a Pillow dependency). Each room is one function
+that takes a direction per pixel and returns a colour, so it doubles as a
+template for code-generated panoramas. `./make_panos.py void` rebuilds one.
+
+These are stand-ins. Real art goes in the same place — drop a 2:1 image in
+`images/` and point a room's `data-pano` at it.
 
 ## Legacy: the Decker deck
 

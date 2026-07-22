@@ -1,0 +1,173 @@
+/* Shared chrome for every panorama room. Rooms link this file and pano.js and
+   declare nothing of their own — see any room's <body> data attributes. */
+
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; background: #05060a; overflow: hidden; }
+body {
+  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: #e8e6df;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- stage ------------------------------------------------------------- */
+/* Built by pano.js; it wraps the canvas and the hotspot layer so both fade
+   together on arrival and departure. */
+#stage {
+  position: fixed; inset: 0;
+  opacity: 0; transition: opacity .5s ease;
+  touch-action: none;
+}
+body.ready #stage { opacity: 1; }
+body.leaving #stage { opacity: 0; transition-duration: .25s; }
+
+#gl { display: block; width: 100%; height: 100%; cursor: grab; }
+#stage.dragging #gl { cursor: grabbing; }
+
+/* --- hotspots ---------------------------------------------------------- */
+/* Real <a> elements projected onto the sphere each frame, so they keep focus,
+   cmd-click and hover for free. Without JS they stay a plain list of links. */
+#stage > #hotspots { position: absolute; inset: 0; pointer-events: none; }
+
+#stage .hotspot {
+  position: absolute; left: 0; top: 0;
+  visibility: hidden;                 /* until pano.js has projected it */
+  pointer-events: auto;
+}
+
+.hotspot {
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  color: #e8e6df; text-decoration: none;
+  font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+  -webkit-user-drag: none;
+  transition: transform .18s ease;
+}
+
+.hotspot .ring {
+  position: relative;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid rgba(232, 230, 223, .8);
+  background: rgba(8, 10, 16, .25);
+  box-shadow: 0 0 12px rgba(0, 0, 0, .55);
+}
+.hotspot .ring::before {
+  content: ""; position: absolute; inset: 11px;
+  border-radius: 50%; background: #e8e6df;
+  transition: inset .18s ease;
+}
+/* Slow outward ping, so a hotspot reads as active rather than decorative. */
+.hotspot .ring::after {
+  content: ""; position: absolute; inset: -1px;
+  border-radius: 50%; border: 1px solid rgba(232, 230, 223, .55);
+  animation: ping 3s cubic-bezier(.2, .6, .3, 1) infinite;
+}
+@keyframes ping {
+  0%   { transform: scale(1);   opacity: .65; }
+  70%  { transform: scale(2.1); opacity: 0; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+
+.hotspot .label {
+  padding: 4px 9px; border-radius: 999px; white-space: nowrap;
+  background: rgba(8, 10, 16, .62);
+  border: 1px solid rgba(232, 230, 223, .16);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+
+/* Pinned to the frame edge: an exit that is out of view, and which way to turn
+   to find it. Quiet enough not to compete with what is actually on screen. */
+.hotspot.edge { opacity: .62; transition: opacity .25s ease; }
+.hotspot.edge:hover, .hotspot.edge:focus-visible { opacity: 1; }
+.hotspot.edge .ring {
+  width: 17px; height: 17px;
+  background: rgba(8, 10, 16, .55);
+  border-color: rgba(232, 230, 223, .9);
+}
+.hotspot.edge .ring::before { inset: 6px; }
+.hotspot.edge .ring::after { animation: none; opacity: 0; }
+.hotspot.edge .label { font-size: 10px; padding: 3px 7px; letter-spacing: .12em; }
+.hotspot.edge[data-side="left"] .label::before { content: "◂ "; }
+.hotspot.edge[data-side="right"] .label::after { content: " ▸"; }
+
+.hotspot:hover, .hotspot:focus-visible { outline: none; transform: scale(1.08); }
+.hotspot:hover .ring::before, .hotspot:focus-visible .ring::before { inset: 8px; }
+.hotspot:focus-visible .ring { box-shadow: 0 0 0 3px rgba(232, 230, 223, .35); }
+
+/* --- overlays ---------------------------------------------------------- */
+.overlay { position: fixed; pointer-events: none; z-index: 2; }
+
+#readout {
+  left: max(14px, env(safe-area-inset-left)); top: 14px;
+  padding: 6px 10px; border-radius: 8px;
+  background: rgba(8, 10, 16, .55);
+  border: 1px solid rgba(232, 230, 223, .14);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 11px; letter-spacing: .06em; color: #b9b6ac;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Same chip as the readout — a bare label washes out against a bright sky. */
+#title {
+  right: max(14px, env(safe-area-inset-right)); top: 14px;
+  padding: 6px 10px; border-radius: 8px;
+  background: rgba(8, 10, 16, .55);
+  border: 1px solid rgba(232, 230, 223, .14);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+  color: #e8e6df;
+}
+#title:empty { display: none; }
+
+#hint {
+  left: 50%; bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+  padding: 7px 14px; max-width: calc(100vw - 24px);
+  background: rgba(8, 10, 16, .62);
+  border: 1px solid rgba(232, 230, 223, .16);
+  border-radius: 999px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 11px; letter-spacing: .04em; color: #b9b6ac;
+  transition: opacity .6s ease;
+}
+#hint.hidden { opacity: 0; }
+#hint b { color: #e8e6df; font-weight: 600; }
+@media (max-width: 640px) { .desktop-only { display: none; } }
+
+#status {
+  inset: 0; display: grid; place-content: center; text-align: center;
+  gap: 10px; padding: 24px; letter-spacing: .06em; color: #8d8a82;
+  transition: opacity .4s ease;
+}
+#status.hidden { opacity: 0; }
+#status .err { color: #e8746c; max-width: 34em; line-height: 1.6; }
+
+#drop {
+  inset: 0; display: none; place-content: center;
+  background: rgba(5, 6, 10, .8); z-index: 3;
+  letter-spacing: .1em; text-transform: uppercase; font-size: 12px;
+}
+#drop.on { display: grid; }
+#drop span {
+  border: 1px dashed rgba(232, 230, 223, .4);
+  padding: 22px 30px; border-radius: 12px;
+}
+
+/* --- no JavaScript ------------------------------------------------------ */
+/* Until pano.js moves the nav into the stage — and if JS never runs at all —
+   the exits render as a plain row of links, so the rooms stay navigable. */
+body > #hotspots {
+  position: fixed; inset: auto 0 0 0; z-index: 2;
+  display: flex; gap: 26px; justify-content: center; padding: 26px;
+}
+noscript {
+  position: fixed; inset: 0; display: grid; place-content: center;
+  text-align: center; color: #8d8a82; letter-spacing: .06em; padding: 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hotspot .ring::after { animation: none; }
+  #stage, .hotspot { transition: none; }
+}
