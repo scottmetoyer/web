@@ -1,71 +1,90 @@
 # scottmetoyer-web
 
-A [Decker](https://beyondloom.com/decker/) deck published as a static website.
+A static personal site. No build system, no package manager, no server — just
+files. Edit, commit, push; the host serves the folder as-is.
+
+The landing page is an interactive 360° panorama viewer.
 
 ## Files
 
-- `site.deck` — the source deck (authored in the Decker app). This is the source of truth for deck content.
-- `index.html` — the **exported** deck (Decker "Export HTML"). A single self-contained file: the Decker runtime + the deck data embedded in a `<script language="decker">` block at the top. ~426KB, mostly machine-generated. Do not hand-author deck content here — edit it in Decker and re-export.
-- `images/` — image assets referenced by hand edits (e.g. the page background).
-- `customize.py` — post-export patch script (see below).
-- `pano.html` — standalone drag-around 360° panorama viewer (see below).
-- `make_demo_pano.py` — generates `images/demo-pano.png`, the viewer's test image.
+- `index.html` — the site. A self-contained WebGL 360° panorama viewer
+  (see below). Hand-authored; edit it directly.
+- `images/` — image assets. `demo-pano.png` is the placeholder panorama the
+  viewer loads by default.
+- `make_demo_pano.py` — regenerates `images/demo-pano.png`.
+- `deck.html`, `site.deck`, `index.deck`, `customize.py` — **legacy**, see below.
 
-## Important: re-exporting clobbers hand edits
+## The 360° viewer (`index.html`)
 
-Every time the deck is re-exported from Decker, `index.html` is overwritten,
-wiping any manual changes (custom CSS, background image, etc.).
+Everything is in the one file: markup, CSS, and the GL code. It raycasts an
+equirectangular (2:1) image in a fragment shader across a fullscreen triangle,
+which gives correct rectilinear perspective at any zoom and pitch — unlike
+scrolling a wide image sideways, which looks wrong the moment you look up.
 
-**Post-export workflow:**
+WebGL2 is used when available only because it permits `REPEAT` wrapping on
+non-power-of-two textures; on WebGL1 the image is rescaled to a power of two
+first. Oversized photos are downscaled to the GPU's `MAX_TEXTURE_SIZE`.
 
-1. Export the deck from Decker → overwrites `index.html`
-2. Run `./customize.py` → reapplies the hand edits
+**Controls:** drag to look, scroll/pinch to zoom, arrows to nudge; `f`
+fullscreen, `d` 1-bit Bayer dither, `r` reset, space toggles the idle drift.
+**Drag any 360 photo onto the page** to view it — the fastest way to check a
+new image.
 
-`customize.py` holds a list of `Patch(name, before, after)` exact-string
-replacements. It is idempotent and reports the state of each patch
-(`applied` / `already applied` / `WARN anchor not found`). A `WARN` (non-zero
-exit) means Decker changed the text being matched and the patch's `before`
-string needs updating.
+**Query params:** `?img=images/foo.jpg&yaw=90&pitch=-10&fov=60&dither=1&drift=0`.
+`yaw`/`pitch`/`fov` make specific views linkable, and are how the viewer gets
+regression-tested with headless screenshots (see below).
 
-**To add a new post-export tweak:** add a `Patch(...)` entry to the `PATCHES`
-list in `customize.py` rather than only editing `index.html` directly —
-otherwise the next export will lose it.
+**Must be served over HTTP** — browsers refuse to build WebGL textures from
+`file://`. `python3 -m http.server` is enough; the page says so if it hits it.
 
-### Current customizations
+### Sign conventions (easy to get backwards)
 
-- Full-screen background image (`images/abc_cover_notext_variant.jpg`) on
-  `<body>`, behind the centered deck canvas.
+Both drag axes are "grab the photo and pull": drag right and the scene follows
+right, drag down and the sky comes into view. In view state, `yaw` increasing
+turns right (east) and `pitch` increasing looks up. The shader's yaw rotation
+must be the inverse of the naive one or the whole thing feels like a scrollbar.
 
-## 360° panorama viewer (`pano.html`)
+### Testing changes
 
-A self-contained page, deliberately **outside** the Decker deck: Decker's canvas
-is a fixed 512×342 1-bit surface and every re-export clobbers `index.html`, so a
-WebGL viewer can't live in there. `pano.html` has no dependencies and no build
-step — open it, or link to it from anywhere.
+Headless Chrome plus the query params covers most of it — load a known `yaw`
+and check the right thing is centered:
 
-It raycasts an equirectangular (2:1) image in a fragment shader on a fullscreen
-triangle, which gives correct rectilinear perspective at any zoom, unlike
-scrolling a wide image sideways. WebGL2 is used when available only because it
-permits `REPEAT` wrapping on non-power-of-two textures; on WebGL1 the image is
-rescaled to a power of two first. Oversized photos are downscaled to the GPU's
-`MAX_TEXTURE_SIZE`.
+    python3 -m http.server 8777 &
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless=new --disable-gpu --enable-unsafe-swiftshader \
+      --window-size=900,560 --virtual-time-budget=6000 \
+      --screenshot=out.png "http://localhost:8777/?yaw=90&drift=0"
 
-- Drag to look, scroll/pinch to zoom, arrows to nudge; `f` fullscreen,
-  `d` 1-bit Bayer dither, `r` reset, space toggles the idle auto-drift.
-- **Drag any 360 photo onto the page** to view it — the quickest way to check a
-  new image.
-- Query params: `?img=images/foo.jpg&yaw=90&pitch=-10&fov=60&dither=1&drift=0`.
-  `yaw`/`pitch`/`fov` make specific views linkable and are how the viewer was
-  regression-tested with headless screenshots.
-- Needs to be served over HTTP — browsers refuse to make WebGL textures from
-  `file://`. `python3 -m http.server` is enough; the page says so if it hits it.
+In `demo-pano.png` the cardinal posts are N=red, E=yellow, S=green, W=blue, so
+a screenshot immediately shows whether orientation is right. Note that
+`requestAnimationFrame` is throttled under headless virtual time, so the
+on-screen readout won't update — screenshot the rendered frame instead of
+scraping the DOM.
 
-Swap in a real panorama by dropping a 2:1 equirectangular JPEG in `images/` and
-pointing `SRC`/`?img=` at it. Any 360 camera or a phone's photosphere mode emits
-this format.
+## Panorama images
 
-## Notes
+The viewer wants **equirectangular 2:1** images (what every 360 camera and
+photosphere mode emits). 4096×2048 is a good working size.
 
-- The deck is `locked:1` in the export.
-- This is a static site — no build system, no package manager, no server.
-  Just export, patch, and serve the files.
+Useful to remember when making them: the middle row is the horizon, the top and
+bottom rows each collapse to a single point, the left and right edges must wrap,
+and vertical lines in the world stay vertical columns in the image while every
+other straight line becomes a sine curve.
+
+`make_demo_pano.py` renders one procedurally with numpy + zlib (PNG written by
+hand to avoid a Pillow dependency) and is a decent template for code-generated
+panoramas.
+
+## Legacy: the Decker deck
+
+The site used to be a [Decker](https://beyondloom.com/decker/) deck. That is no
+longer being pursued (as of 2026-07-22), but the export is kept at `deck.html`
+rather than deleted.
+
+- `site.deck` / `index.deck` — the source decks, authored in the Decker app.
+- `deck.html` — the exported deck, a single self-contained ~421KB file.
+- `customize.py` — reapplies hand edits (the full-screen background image) that
+  Decker's export would otherwise clobber. Now defaults to patching `deck.html`.
+
+None of this is wired into the live site anymore. It can all be deleted whenever
+— git history keeps it.

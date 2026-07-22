@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Reapply post-export customizations to the Decker-exported index.html.
+"""Reapply post-export customizations to the Decker-exported deck.html.
 
-Decker overwrites index.html on every HTML export, wiping any hand edits.
+LEGACY. The Decker deck is no longer the site — it lives on at deck.html and
+this script only exists to keep that page working if it is ever re-exported.
+Safe to delete along with deck.html / site.deck / index.deck.
+
+Decker overwrites its export on every HTML export, wiping any hand edits.
 Run this script after each export to put them back:
 
-    ./customize.py            # patches ./index.html in place
+    ./customize.py            # patches ./deck.html in place
     ./customize.py path.html  # patches a different file
 
 Each entry in PATCHES is an exact string replacement. The script is
@@ -73,5 +77,5 @@ def main(path: str) -> int:
 
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else "index.html"
+    target = sys.argv[1] if len(sys.argv) > 1 else "deck.html"
     sys.exit(main(target))
