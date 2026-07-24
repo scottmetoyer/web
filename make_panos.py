@@ -50,6 +50,27 @@ def angular_dist(lon, lat, t_lon, t_lat):
     return np.arccos(np.clip(dot, -1.0, 1.0))
 
 
+def sphere_noise(dx, dy, dz, rng, octaves=10, base_freq=1.4):
+    """Smooth noise sampled from the 3D direction, in roughly [-1, 1].
+
+    A sum of plane waves sin(k · dir + phase) with random directions k. Because
+    it is a function of the direction vector rather than of longitude/latitude,
+    it is continuous over the whole sphere — no pinch or seam at the poles,
+    unlike sin(lon * freq), where every meridian converges to one point.
+    """
+    acc = np.zeros_like(dx)
+    norm = 0.0
+    for i in range(octaves):
+        v = rng.normal(size=3)
+        v /= np.linalg.norm(v)
+        freq = base_freq * (1.7 ** (i % 4))
+        amp = 0.8 ** (i % 4)
+        proj = dx * v[0] + dy * v[1] + dz * v[2]
+        acc += amp * np.sin(proj * freq + rng.uniform(0.0, 2.0 * np.pi))
+        norm += amp
+    return acc / norm
+
+
 # ---------------------------------------------------------------------------
 # Rooms
 # ---------------------------------------------------------------------------
@@ -103,15 +124,17 @@ def void():
     up = np.clip(dy, 0.0, 1.0)
     img = np.array([7.0, 8.0, 16.0]) + np.array([10.0, 6.0, 22.0]) * (1.0 - up)[..., None]
 
-    # Nebula: a few octaves of cheap sine noise, squared into drifting patches.
-    n = np.zeros_like(lat)
-    for freq, amp in [(1.7, 1.0), (3.9, 0.5), (8.3, 0.25)]:
-        n += amp * np.sin(lon * freq + np.sin(lat * freq * 0.7) * 2.2) \
-                 * np.cos(lat * freq * 1.3 + np.sin(lon * freq) * 1.1)
-    n = np.clip(n * 0.4 + 0.35, 0.0, 1.0) ** 2.0
-    img += np.array([70.0, 30.0, 110.0]) * n[..., None] * 0.55
-    img += np.array([0.0, 60.0, 90.0]) * \
-        (n * np.clip(np.sin(lon * 2.0 + 1.0), 0.0, 1.0))[..., None] * 0.3
+    # Nebula: 3D sphere noise, turbulence-warped and squared into drifting
+    # patches. Sampling from the direction vector keeps it continuous straight
+    # up and down (longitude-based noise pinwheels into a point at the poles).
+    base = sphere_noise(dx, dy, dz, rng, octaves=12, base_freq=1.3)
+    warp = sphere_noise(dx, dy, dz, rng, octaves=6, base_freq=2.4)
+    n = base + 0.7 * warp * np.sin(base * 3.0)      # turbulence
+    n = np.clip(n * 0.9 + 0.42, 0.0, 1.0) ** 2.2
+    img += np.array([70.0, 30.0, 110.0]) * n[..., None] * 0.6
+    # A cooler streak, driven by a second field so it also stays pole-safe.
+    blue = np.clip(sphere_noise(dx, dy, dz, rng, octaves=5, base_freq=1.1) + 0.3, 0.0, 1.0)
+    img += np.array([0.0, 60.0, 90.0]) * (n * blue)[..., None] * 0.45
 
     # Stars, spread evenly over the sphere (uniform in sin(latitude), not in
     # latitude — otherwise they bunch up at the poles).
