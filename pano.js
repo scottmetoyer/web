@@ -273,7 +273,9 @@
   const hotspots = [...document.querySelectorAll(".hotspot")].map((node) => {
     const label = node.textContent.trim();
     node.textContent = "";
-    node.append(el("span", { className: "ring" }), el("span", { className: "label" }, label));
+    const inner = el("span", { className: "inner" });
+    inner.append(el("span", { className: "ring" }), el("span", { className: "label" }, label));
+    node.append(inner);
     node.setAttribute("draggable", "false");
     return {
       node,
@@ -283,8 +285,6 @@
       edge: null,
     };
   });
-
-  const EDGE_INSET = 44;   // px from the frame edge for off-screen exits
 
   // Project each hotspot's world direction back into view space and onto the
   // screen — the exact inverse of the rotation the shader applies. Exits that
@@ -311,25 +311,28 @@
       const y = wy * cp + zy * sp;
       const z = -wy * sp + zy * cp;
 
-      let px, py, onEdge = true;
+      let px, py, side, inFrame = false;
       if (z < -1e-3) {
+        // In front of the camera: use the true projected position. When it
+        // falls outside the frame it gets clamped below rather than parked at
+        // a fixed spot, so the marker slides continuously along the edge and
+        // hands off to its real position without a jump.
         const ndcX = (x / -z) / (aspect * t);
         const ndcY = (y / -z) / t;
-        if (Math.abs(ndcX) < 0.94 && Math.abs(ndcY) < 0.9) {
-          px = (ndcX * 0.5 + 0.5) * w;
-          py = (0.5 - ndcY * 0.5) * h;
-          onEdge = false;
-        } else {
-          py = (0.5 - ndcY * 0.5) * h;
-        }
+        px = (ndcX * 0.5 + 0.5) * w;
+        py = (0.5 - ndcY * 0.5) * h;
+        side = ndcX >= 0 ? "right" : "left";
+        inFrame = Math.abs(ndcX) < 0.94 && Math.abs(ndcY) < 0.9;
+      } else {
+        // Behind the camera, where the projection is meaningless. Approximate
+        // the height by angle so it does not jump as it swings into view.
+        const rel = ((spot.lonDeg - yawDeg + 540) % 360) - 180;
+        side = rel >= 0 ? "right" : "left";
+        px = side === "right" ? Infinity : -Infinity;
+        py = h / 2 - (spot.lat - view.pitch) * (h / view.fov);
       }
 
-      if (onEdge) {
-        // Which way you would have to turn to bring it into view.
-        const rel = ((spot.lonDeg - yawDeg + 540) % 360) - 180;
-        const side = rel >= 0 ? "right" : "left";
-        px = side === "right" ? w - EDGE_INSET : EDGE_INSET;
-        py = Math.min(Math.max(Number.isFinite(py) ? py : h / 2, 56), h - 56);
+      if (!inFrame) {
         if (spot.edge !== side) {
           spot.edge = side;
           spot.node.classList.add("edge");
@@ -338,6 +341,7 @@
           spot.halfW = spot.node.offsetWidth / 2;
         }
         px = Math.min(Math.max(px, spot.halfW + 8), w - spot.halfW - 8);
+        py = Math.min(Math.max(py, 56), h - 56);
       } else if (spot.edge !== null) {
         spot.edge = null;
         spot.node.classList.remove("edge");

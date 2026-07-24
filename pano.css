@@ -38,10 +38,17 @@ body.leaving #stage { opacity: 0; transition-duration: .25s; }
 }
 
 .hotspot {
-  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  display: block;
   color: #e8e6df; text-decoration: none;
   font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
   -webkit-user-drag: none;
+}
+
+/* Positioning lives on the <a>, and its transform must never be animated:
+   pano.js rewrites it every frame, so any transition here makes the hotspot
+   lag behind the panorama while you drag. Hover scaling goes on .inner. */
+.hotspot .inner {
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
   transition: transform .18s ease;
 }
 
@@ -91,7 +98,8 @@ body.leaving #stage { opacity: 0; transition-duration: .25s; }
 .hotspot.edge[data-side="left"] .label::before { content: "◂ "; }
 .hotspot.edge[data-side="right"] .label::after { content: " ▸"; }
 
-.hotspot:hover, .hotspot:focus-visible { outline: none; transform: scale(1.08); }
+.hotspot:hover, .hotspot:focus-visible { outline: none; }
+.hotspot:hover .inner, .hotspot:focus-visible .inner { transform: scale(1.08); }
 .hotspot:hover .ring::before, .hotspot:focus-visible .ring::before { inset: 8px; }
 .hotspot:focus-visible .ring { box-shadow: 0 0 0 3px rgba(232, 230, 223, .35); }
 
@@ -169,5 +177,5 @@ noscript {
 
 @media (prefers-reduced-motion: reduce) {
   .hotspot .ring::after { animation: none; }
-  #stage, .hotspot { transition: none; }
+  #stage, .hotspot .inner { transition: none; }
 }
