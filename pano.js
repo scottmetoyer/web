@@ -61,7 +61,11 @@
   const canvas = el("canvas", { id: "gl" });
   stage.append(canvas);
 
-  // Authored in the room's markup so the links survive without JavaScript.
+  // Both authored in the room's markup; moved into the stage so they fade with
+  // the panorama on arrival and departure. Props sit below hotspots so
+  // navigation always wins a z-order tie.
+  const propLayer = document.getElementById("props");
+  if (propLayer) stage.append(propLayer);
   const nav = document.getElementById("hotspots");
   if (nav) stage.append(nav);
   document.body.prepend(stage);
@@ -354,12 +358,126 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Props: clickable images planted in the scene, opening a dialog.
+  // A room writes <button class="prop" data-src data-yaw data-pitch>, with a
+  // <template> holding the dialog content. Everything else is built here.
+  // ---------------------------------------------------------------------
+  const props = [...document.querySelectorAll(".prop")].map((node) => {
+    const img = el("img", { src: node.dataset.src, alt: node.dataset.alt || "",
+                            draggable: false });
+    node.prepend(img);                 // the <template> stays for the dialog
+    node.setAttribute("type", "button");
+    return {
+      node, img,
+      lon: (parseFloat(node.dataset.yaw) || 0) / DEG,
+      lat: (parseFloat(node.dataset.pitch) || 0) / DEG,
+      heightDeg: parseFloat(node.dataset.height) || 30,   // angular height
+      anchor: node.dataset.anchor === "center" ? "-50%" : "-100%",
+      visible: false, lastH: 0,
+    };
+  });
+  const propByNode = new Map(props.map((p) => [p.node, p]));
+
+  // Project props the same way as hotspots, but size them by angular height so
+  // they stay planted in the world — zoom in and the figure grows. Off-screen
+  // props are simply hidden; unlike an exit, an object needs no wayfinding.
+  function placeProps(w, h) {
+    if (!props.length) return;
+    const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw);
+    const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
+    const t = Math.tan(view.fov / 2);
+    const aspect = w / h;
+    const pxPerRad = h / view.fov;
+
+    for (const p of props) {
+      const cl = Math.cos(p.lat);
+      const wx = cl * Math.sin(p.lon);
+      const wy = Math.sin(p.lat);
+      const wz = -cl * Math.cos(p.lon);
+
+      const x = wx * cy + wz * sy;
+      const zy = -wx * sy + wz * cy;
+      const y = wy * cp + zy * sp;
+      const z = -wy * sp + zy * cp;
+
+      // Angular half-extent of the sprite in NDC, so a tall prop stays visible
+      // while its anchor (its feet) is still just below the frame.
+      const spanY = (p.heightDeg / DEG) / (view.fov / 2);
+      let show = z < -1e-3, px = 0, py = 0;
+      if (show) {
+        const ndcX = (x / -z) / (aspect * t);
+        const ndcY = (y / -z) / t;
+        show = Math.abs(ndcX) < 1.4 && ndcY > -1 - spanY && ndcY < 1.2;
+        px = (ndcX * 0.5 + 0.5) * w;
+        py = (0.5 - ndcY * 0.5) * h;
+      }
+
+      if (show !== p.visible) {
+        p.visible = show;
+        p.node.style.visibility = show ? "visible" : "hidden";
+        if (show) p.node.removeAttribute("tabindex");
+        else p.node.setAttribute("tabindex", "-1");
+      }
+      if (show) {
+        const ph = (p.heightDeg / DEG) * pxPerRad;
+        if (Math.abs(ph - p.lastH) > 0.5) {
+          p.img.style.height = ph.toFixed(1) + "px";
+          p.lastH = ph;
+        }
+        p.node.style.transform =
+          `translate(-50%, ${p.anchor}) translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
+      }
+    }
+  }
+
+  // One shared modal, reused by every prop. Native <dialog> gives us the
+  // backdrop, Esc-to-close and focus trapping for free.
+  let dialog = null, dialogBody = null, lastProp = null;
+  function ensureDialog() {
+    if (dialog) return;
+    dialog = el("dialog", { id: "prop-dialog" });
+    const inner = el("div", { className: "dialog-inner" });
+    const close = el("button", { className: "dialog-close", type: "button" }, "✕");
+    close.setAttribute("aria-label", "Close");
+    dialogBody = el("div", { className: "dialog-body" });
+    inner.append(close, dialogBody);
+    dialog.append(inner);
+    document.body.append(dialog);
+
+    close.addEventListener("click", () => dialog.close());
+    // A click that lands on the dialog element itself is the backdrop.
+    dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
+  }
+
+  function openProp(p) {
+    ensureDialog();
+    lastProp = p;
+    dialogBody.textContent = "";
+    const tpl = p.node.querySelector("template");
+    if (tpl) dialogBody.append(tpl.content.cloneNode(true));
+    else dialogBody.append(el("p", {}, p.node.dataset.alt || "…"));
+    // Focus the prop first: showModal records it as the previously-focused
+    // element and the browser restores focus there when the dialog closes.
+    p.node.focus();
+    dialog.showModal();
+  }
+
   // Leaving a room fades out rather than cutting, so the rooms feel connected.
   document.addEventListener("click", (e) => {
+    // A drag that happens to start on a prop/hotspot is a look, not a click.
+    const dragged = dragDist > 6;
+
+    const prop = e.target.closest("button.prop");
+    if (prop) {
+      e.preventDefault();
+      if (!dragged) openProp(propByNode.get(prop));
+      return;
+    }
+
     const link = e.target.closest("a.hotspot");
     if (!link) return;
-    // A drag that happens to start on a hotspot is a look, not a click.
-    if (dragDist > 6) { e.preventDefault(); return; }
+    if (dragged) { e.preventDefault(); return; }
     // Leave modified clicks (new tab, download, …) to the browser.
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
@@ -456,8 +574,11 @@
   function clampPitch(p) { return Math.max(-PITCH_MAX, Math.min(PITCH_MAX, p)); }
 
   addEventListener("keydown", (e) => {
-    // Don't hijack keys while a hotspot is focused and being activated.
-    if (e.target.closest && e.target.closest("a") && (e.key === "Enter" || e.key === " ")) return;
+    // Don't hijack Enter/Space while a link or prop button is focused — those
+    // activate it. And never steal keys while the prop dialog is open.
+    if (dialog && dialog.open) return;
+    if ((e.key === "Enter" || e.key === " ") &&
+        e.target.closest && e.target.closest("a, button")) return;
     const step = view.fov * 0.08;
     switch (e.key) {
       case "ArrowLeft":  view.yaw -= step; break;
@@ -547,6 +668,7 @@
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     placeHotspots(stage.clientWidth, stage.clientHeight);
+    placeProps(stage.clientWidth, stage.clientHeight);
 
     if (haveImage) {
       const deg = ((view.yaw * DEG) % 360 + 360) % 360;

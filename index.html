@@ -15,6 +15,19 @@
      yaw/pitch are degrees; yaw 0 is straight ahead, increasing to the right. -->
 <body data-pano="images/pano-hub.png" data-room="The Plain" data-yaw="0" data-fov="78">
 
+<!-- Props: clickable images planted in the scene. data-yaw/data-pitch aim at
+     the figure's feet; data-height is its size in degrees of view. The
+     <template> holds whatever the dialog should show. -->
+<div id="props">
+  <button class="prop" data-src="images/sprite-figure.png" data-alt="A figure"
+          data-yaw="24" data-pitch="-20" data-height="34">
+    <template>
+      <h2>Someone</h2>
+      <p>A figure standing on the plain. There's nothing to say yet.</p>
+    </template>
+  </button>
+</div>
+
 <nav id="hotspots">
   <a class="hotspot" href="hall.html" data-yaw="90"  data-pitch="6">The Hall</a>
   <a class="hotspot" href="void.html" data-yaw="270" data-pitch="6">The Void</a>

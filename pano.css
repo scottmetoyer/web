@@ -103,6 +103,67 @@ body.leaving #stage { opacity: 0; transition-duration: .25s; }
 .hotspot:hover .ring::before, .hotspot:focus-visible .ring::before { inset: 8px; }
 .hotspot:focus-visible .ring { box-shadow: 0 0 0 3px rgba(232, 230, 223, .35); }
 
+/* --- props: clickable images anchored in the scene --------------------- */
+/* Like hotspots, projected onto the sphere each frame — but they show an
+   image, scale with zoom so they stay planted in the world, and open a
+   dialog instead of navigating. pano.js sizes the <img> and moves the
+   button; nothing here may transition the button's transform. */
+#stage > #props { position: absolute; inset: 0; pointer-events: none; }
+
+.prop {
+  position: absolute; left: 0; top: 0;
+  margin: 0; padding: 0; border: 0; background: none;
+  visibility: hidden;                 /* until pano.js has projected it */
+  pointer-events: auto; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.prop img {
+  display: block; width: auto;        /* height is set per-frame by pano.js */
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, .5));
+  transition: filter .18s ease, transform .18s ease;
+  transform-origin: 50% 100%;
+  -webkit-user-drag: none; user-select: none;
+}
+.prop:hover img, .prop:focus-visible img {
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, .55)) brightness(1.14);
+  transform: scale(1.03);
+}
+.prop:focus-visible { outline: none; }
+.prop template { display: none; }
+
+/* --- prop dialog ------------------------------------------------------- */
+#prop-dialog {
+  margin: auto; padding: 0; border: 0; background: transparent;
+  max-width: min(92vw, 460px); color: #e8e6df;
+}
+#prop-dialog::backdrop {
+  background: rgba(5, 6, 10, .62);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+#prop-dialog .dialog-inner {
+  position: relative;
+  padding: 28px 26px 24px;
+  background: rgba(14, 16, 24, .95);
+  border: 1px solid rgba(232, 230, 223, .16);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+  font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+#prop-dialog .dialog-body :first-child { margin-top: 0; }
+#prop-dialog .dialog-body :last-child { margin-bottom: 0; }
+#prop-dialog h2 {
+  margin: 0 0 12px; font-size: 15px; font-weight: 600; letter-spacing: .04em;
+}
+#prop-dialog .dialog-close {
+  position: absolute; top: 10px; right: 12px;
+  width: 26px; height: 26px; padding: 0;
+  display: grid; place-content: center;
+  background: none; border: 0; border-radius: 6px;
+  color: #b9b6ac; font-size: 15px; cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+#prop-dialog .dialog-close:hover { background: rgba(232, 230, 223, .12); color: #e8e6df; }
+
 /* --- overlays ---------------------------------------------------------- */
 .overlay { position: fixed; pointer-events: none; z-index: 2; }
 
@@ -177,5 +238,5 @@ noscript {
 
 @media (prefers-reduced-motion: reduce) {
   .hotspot .ring::after { animation: none; }
-  #stage, .hotspot .inner { transition: none; }
+  #stage, .hotspot .inner, .prop img { transition: none; }
 }

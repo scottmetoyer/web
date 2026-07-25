@@ -15,7 +15,9 @@ clicking hotspots painted into the space.
   transitions. Shared by every room.
 - `pano.css` — all the styling. Shared by every room.
 - `images/pano-*.png` — one panorama per room. Placeholders for now.
+- `images/sprite-*.png` — transparent prop images (see Props below).
 - `make_panos.py` — regenerates those placeholder panoramas.
+- `make_sprites.py` — regenerates the placeholder prop sprites.
 - `deck.html`, `site.deck`, `index.deck`, `customize.py` — **legacy**, see below.
 
 ## Adding a room
@@ -43,6 +45,42 @@ currently out of frame gets pinned to the edge of the screen, dimmed, with a
 caret showing which way to turn — otherwise you can arrive facing away from
 every exit and not know there is anywhere to go. Dragging that happens to start
 on a hotspot is treated as a look, not a click.
+
+## Props (clickable images that open a dialog)
+
+A prop is an image planted in the scene — a figure on the plain, an object on a
+plinth — that opens a modal dialog when clicked. Distinct from a hotspot: a
+hotspot is a fixed-size wayfinding UI that navigates; a prop is a thing in the
+world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
+
+```html
+<div id="props">
+  <button class="prop" data-src="images/sprite-figure.png" data-alt="A figure"
+          data-yaw="24" data-pitch="-20" data-height="34">
+    <template>
+      <h2>Someone</h2>
+      <p>Whatever the dialog should show — arbitrary HTML.</p>
+    </template>
+  </button>
+</div>
+```
+
+- `data-yaw` / `data-pitch` aim at the prop's **anchor**, which defaults to its
+  bottom-centre (the figure's feet) — so pitch is usually below the horizon for
+  something standing on the ground. `data-anchor="center"` anchors by the middle
+  instead.
+- `data-height` is the prop's size in **degrees of view**, not pixels. That is
+  what keeps it planted: zoom in and it grows with the scene, because its pixel
+  height is `data-height / fov * viewportHeight` each frame.
+- `data-src` is a transparent PNG. `make_sprites.py` generates the placeholders
+  (`images/sprite-*.png`, RGBA). The `<template>` holds the dialog content and
+  is cloned into one shared native `<dialog>` on click.
+
+Like hotspots, props are projected every frame and a drag that starts on one is
+a look, not a click. Off-screen props are simply hidden (an object needs no
+wayfinding). The dialog is a native `<dialog>` — Esc, backdrop-click and focus
+trapping come for free, and focus returns to the prop on close. Without
+JavaScript the buttons stay hidden rather than rendering broken.
 
 ## The viewer engine (`pano.js`)
 
