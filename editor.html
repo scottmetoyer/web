@@ -8,12 +8,12 @@
 <link rel="stylesheet" href="pano.css">
 </head>
 
-<!-- The room editor. Drop a panorama to set the background, drop images to add
-     them to the tray, right-click to place, then "save room" to download a
-     room file. data-edit turns on the editor; data-fresh means the first
-     dropped image becomes the background. You can also edit any existing room
-     in place by appending ?edit=1 to its URL. -->
-<body data-edit="1" data-fresh="1" data-pano="images/pano-hub.png" data-room="Untitled" data-fov="80">
+<!-- The room editor. Drop images to fill the tray, right-click a tile to set the
+     background (or place tiles as props by right-clicking the scene), then
+     "save room" to download a room file. data-edit turns on the editor. The hub
+     panorama is just a placeholder backdrop until you set your own. You can also
+     edit any existing room in place by appending ?edit=1 to its URL. -->
+<body data-edit="1" data-pano="images/pano-hub.png" data-room="Untitled" data-fov="80">
 
 <div id="props"></div>
 <nav id="hotspots"></nav>

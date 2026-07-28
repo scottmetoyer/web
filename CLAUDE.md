@@ -25,14 +25,22 @@ clicking hotspots painted into the space.
 
 The fastest way to build and link rooms — no typing angles by hand.
 
-1. Open `editor.html` (served over HTTP). **Drop a panorama** onto it to set the
-   background; **drop more images** to add them to the tray at the top.
+1. Open `editor.html` (served over HTTP). **Drop images** — they all land in the
+   tray at the top. **Right-click a tray tile → "set as background"** to make one
+   the panorama; the rest stay as placeable props. (So you can place objects
+   before committing to a background.)
 2. Pick a tray image (or **+ exit**), then **right-click in the scene** to place
    it exactly where you aimed. Drag a placed item to move it; select it to edit
-   its size / dialog text / exit label+target, or press <kbd>del</kbd>.
+   its size, its **dialog HTML**, or an exit's label+target, or press <kbd>del</kbd>.
 3. **Save room** downloads a ready-to-commit room `.html` (and hands back any
    images you dropped — move those into `images/`). The arrival view is set to
    wherever you're looking when you save.
+
+A prop's dialog content is **raw HTML you author in the panel** — including
+`<script>`, which runs when the dialog opens (`runScripts()` re-creates cloned
+script nodes so they execute). It's your own content, so nothing is escaped;
+that also means a broken tag there can break the dialog. "preview dialog" opens
+it so you can check.
 
 You can also edit an **existing** room in place by appending `?edit=1` to its
 URL (e.g. `hall.html?edit=1`) — its props and exits become selectable, and

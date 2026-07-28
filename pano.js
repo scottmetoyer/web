@@ -482,6 +482,17 @@
     dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
   }
 
+  // A <script> inserted by cloneNode/innerHTML never executes. Re-create each
+  // one so a prop's dialog can carry live markup and script, not just text.
+  function runScripts(root) {
+    root.querySelectorAll("script").forEach((old) => {
+      const s = document.createElement("script");
+      for (const a of old.attributes) s.setAttribute(a.name, a.value);
+      s.textContent = old.textContent;
+      old.replaceWith(s);
+    });
+  }
+
   function openProp(p) {
     ensureDialog();
     lastProp = p;
@@ -489,6 +500,7 @@
     const tpl = p.node.querySelector("template");
     if (tpl) dialogBody.append(tpl.content.cloneNode(true));
     else dialogBody.append(el("p", {}, p.node.dataset.alt || "…"));
+    runScripts(dialogBody);
     // Focus the prop first: showModal records it as the previously-focused
     // element and the browser restores focus there when the dialog closes.
     p.node.focus();
@@ -742,9 +754,6 @@
     const hotBox = nav || stage.appendChild(el("nav", { id: "hotspots" }));
 
     let bgName = baseName(data.pano) || "pano-hub.png";
-    // Fresh editor.html: the first dropped image is the background. Editing an
-    // existing room: it already has one, so every drop is a prop.
-    let bgSet = data.fresh !== "1";
     let brush = null;                        // what right-click will place
     let selected = null, moving = null, movePointer = null;
     const assets = new Map();                // dropped file name -> Blob
@@ -762,8 +771,8 @@
 
     const panel = el("div", { id: "ed-panel", className: "overlay", hidden: true });
     const help = el("div", { id: "ed-help", className: "overlay" },
-      "drop a panorama to set the background · drop images to add them · " +
-      "<b>right-click</b> to place · drag to move · <b>del</b> to remove");
+      "drop images to add them to the tray · <b>right-click a tile</b> to set the " +
+      "background · <b>right-click the scene</b> to place · drag to move · <b>del</b> to remove");
     document.body.append(bar, panel, help);
 
     // --- brushes / tray -----------------------------------------------------
@@ -773,12 +782,23 @@
       if (chip) chip.classList.add("on");
     }
     function addTrayImage(name, url) {
+      const b = { kind: "prop", live: url, src: "images/" + name,
+                  name: name.replace(/\.\w+$/, ""), fileName: name };
       const chip = el("button", { className: "ed-chip", type: "button", title: name });
       chip.append(el("img", { src: url, alt: "", draggable: false }));
-      chip.addEventListener("click", () =>
-        setBrush({ kind: "prop", live: url, src: "images/" + name, name: name.replace(/\.\w+$/, "") }, chip));
+      chip.addEventListener("click", () => setBrush(b, chip));
+      chip.addEventListener("contextmenu", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        showMenu(e.clientX, e.clientY, [
+          { label: "set as background", run: () => setBackground(name, url) },
+          { label: "remove", run: () => {
+              chip.remove();
+              if (brush === b) setBrush(null);
+            } },
+        ]);
+      });
       tray.append(chip);
-      setBrush({ kind: "prop", live: url, src: "images/" + name, name: name.replace(/\.\w+$/, "") }, chip);
+      setBrush(b, chip);                     // newest drop becomes the active brush
     }
     exitBrush.addEventListener("click", () => setBrush({ kind: "exit" }, exitBrush));
 
@@ -800,7 +820,7 @@
       propBox.append(node);
       const p = registerProp(node);
       p.exportSrc = b.src;                   // images/… path for the saved file
-      p.title = b.name; p.body = ""; p.alt = b.name;
+      p.alt = b.name;
       props.push(p); propByNode.set(node, p);
       select(p);
       return p;
@@ -852,12 +872,16 @@
           item.heightDeg = parseFloat(size.value);
           item.node.dataset.height = size.value;
         });
-        const title = el("input", { type: "text", value: item.title || "" });
-        title.addEventListener("input", () => { item.title = title.value; });
-        const body = el("textarea", { rows: "3", value: item.body || "" });
-        body.addEventListener("input", () => { item.body = body.value; });
+        // Raw dialog markup — HTML and <script> are kept verbatim and run when
+        // the dialog opens. This is your own content, so nothing is escaped.
+        const tpl = item.node.querySelector("template");
+        const htmlField = el("textarea", { className: "ed-code", rows: "7",
+          spellcheck: false, value: tpl ? tpl.innerHTML.trim() : "" });
+        htmlField.addEventListener("input", () => { tpl.innerHTML = htmlField.value; });
+        const preview = el("button", { className: "ed-preview", type: "button" }, "preview dialog");
+        preview.addEventListener("click", () => openProp(item));
         panel.append(el("h3", {}, "Prop"), field("size (°)", size),
-                     field("dialog title", title), field("dialog body", body));
+                     field("dialog html", htmlField), preview);
       } else {
         const label = el("input", { type: "text", value: item.label || "Exit" });
         label.addEventListener("input", () => {
@@ -910,7 +934,10 @@
       }
     });
 
-    // --- drops route to background / tray -----------------------------------
+    // --- drops all go to the tray -------------------------------------------
+    // Every dropped image becomes a tray tile you can place as a prop, or
+    // right-click and "set as background". So you can start dropping and
+    // placing objects before you've decided on a panorama.
     addEventListener("drop", (e) => {
       const files = [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith("image/"));
       if (!files.length) return;
@@ -919,15 +946,12 @@
       for (const f of files) {
         const url = URL.createObjectURL(f);
         assets.set(f.name, f);
-        if (!bgSet) { setBackground(f.name, url); bgSet = true; }
-        else addTrayImage(f.name, url);
+        addTrayImage(f.name, url);
       }
     }, true);
 
     // --- save ---------------------------------------------------------------
     function propTemplate(p) {
-      if (p.title !== undefined)
-        return `<h2>${esc(p.title)}</h2>\n      <p>${esc(p.body || "")}</p>`;
       const t = p.node.querySelector("template");
       return t ? t.innerHTML.trim() : "";
     }
@@ -990,6 +1014,24 @@ ${exits}
         ? "saved " + room + ".html + " + assets.size + " image(s) — move them into images/"
         : "saved " + room + ".html");
     });
+
+    // --- right-click menu (used by the tray) --------------------------------
+    const menu = el("div", { id: "ed-menu", className: "overlay", hidden: true });
+    document.body.append(menu);
+    function showMenu(x, y, items) {
+      menu.textContent = "";
+      for (const it of items) {
+        const b = el("button", { type: "button" }, it.label);
+        b.addEventListener("click", () => { hideMenu(); it.run(); });
+        menu.append(b);
+      }
+      menu.style.left = x + "px";
+      menu.style.top = y + "px";
+      menu.hidden = false;
+    }
+    function hideMenu() { menu.hidden = true; }
+    addEventListener("pointerdown", (e) => { if (!menu.contains(e.target)) hideMenu(); }, true);
+    addEventListener("keydown", (e) => { if (e.key === "Escape") hideMenu(); });
 
     // --- little transient toast --------------------------------------------
     let flashTimer = 0;

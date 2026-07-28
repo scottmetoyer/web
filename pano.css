@@ -247,6 +247,10 @@ noscript {
 body.editing #hint { display: none; }
 body.editing .hotspot.edge { opacity: .85; }        /* keep off-screen exits legible while placing */
 body.editing .prop, body.editing .hotspot { cursor: grab; }
+/* Promote moved items to their own layer. Without this, dragging one over the
+   still editor background leaves drop-shadow trails, because the canvas repaint
+   never covers the DOM element's previous position. */
+body.editing .prop, body.editing .hotspot { will-change: transform; }
 body.editing .prop.selected, body.editing .hotspot.selected { outline: none; }
 body.editing .prop.selected img {
   outline: 2px solid #7fd0ff; outline-offset: 3px;
@@ -314,6 +318,17 @@ body.editing .hotspot.selected .ring { box-shadow: 0 0 0 3px #7fd0ff; }
   border-radius: 6px; resize: vertical;
 }
 .ed-field input[type="range"] { padding: 0; }
+.ed-field textarea.ed-code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px; line-height: 1.45; white-space: pre; overflow-wrap: normal;
+  min-height: 96px;
+}
+.ed-preview {
+  width: 100%; margin: 0 0 10px; padding: 6px; cursor: pointer;
+  background: rgba(127, 208, 255, .1); border: 1px solid rgba(127, 208, 255, .45);
+  border-radius: 6px; color: #dff1ff; font: inherit; font-size: 12px;
+}
+.ed-preview:hover { background: rgba(127, 208, 255, .18); }
 .ed-del {
   width: 100%; margin-top: 4px; padding: 6px; cursor: pointer;
   background: rgba(232, 116, 108, .12); border: 1px solid rgba(232, 116, 108, .5);
@@ -329,6 +344,20 @@ body.editing .hotspot.selected .ring { box-shadow: 0 0 0 3px #7fd0ff; }
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 #ed-help b { color: #e8e6df; }
+
+#ed-menu {
+  position: fixed; z-index: 8; pointer-events: auto;
+  min-width: 150px; padding: 4px;
+  background: rgba(14, 16, 24, .96);
+  border: 1px solid rgba(232, 230, 223, .18); border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+}
+#ed-menu button {
+  display: block; width: 100%; padding: 7px 10px; text-align: left;
+  background: none; border: 0; border-radius: 5px; cursor: pointer;
+  color: #e8e6df; font: inherit; font-size: 12px;
+}
+#ed-menu button:hover { background: rgba(127, 208, 255, .18); }
 
 #ed-toast {
   left: 50%; top: 62px; transform: translateX(-50%) translateY(-6px);
