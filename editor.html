@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Room editor</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="pano.css">
+</head>
+
+<!-- The room editor. Drop a panorama to set the background, drop images to add
+     them to the tray, right-click to place, then "save room" to download a
+     room file. data-edit turns on the editor; data-fresh means the first
+     dropped image becomes the background. You can also edit any existing room
+     in place by appending ?edit=1 to its URL. -->
+<body data-edit="1" data-fresh="1" data-pano="images/pano-hub.png" data-room="Untitled" data-fov="80">
+
+<div id="props"></div>
+<nav id="hotspots"></nav>
+
+<script src="pano.js"></script>
+</body>
+</html>

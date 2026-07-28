@@ -12,19 +12,43 @@ clicking hotspots painted into the space.
   names its panorama and lists its exits; everything else comes from the two
   shared files below. `index.html` is the landing room.
 - `pano.js` — the viewer engine: GL, interaction, hotspot projection, room
-  transitions. Shared by every room.
-- `pano.css` — all the styling. Shared by every room.
+  transitions, and the room editor. Shared by every room.
+- `pano.css` — all the styling, viewer and editor. Shared by every room.
+- `editor.html` — the room editor (see below). Not part of the site graph.
 - `images/pano-*.png` — one panorama per room. Placeholders for now.
 - `images/sprite-*.png` — transparent prop images (see Props below).
 - `make_panos.py` — regenerates those placeholder panoramas.
 - `make_sprites.py` — regenerates the placeholder prop sprites.
 - `deck.html`, `site.deck`, `index.deck`, `customize.py` — **legacy**, see below.
 
-## Adding a room
+## The room editor (`editor.html`)
 
-Copy any room file and change three things: the `data-pano` image, the
-`data-room` name, and the list of exits. No other file needs touching — styling
-and behaviour come from `pano.css` / `pano.js` automatically.
+The fastest way to build and link rooms — no typing angles by hand.
+
+1. Open `editor.html` (served over HTTP). **Drop a panorama** onto it to set the
+   background; **drop more images** to add them to the tray at the top.
+2. Pick a tray image (or **+ exit**), then **right-click in the scene** to place
+   it exactly where you aimed. Drag a placed item to move it; select it to edit
+   its size / dialog text / exit label+target, or press <kbd>del</kbd>.
+3. **Save room** downloads a ready-to-commit room `.html` (and hands back any
+   images you dropped — move those into `images/`). The arrival view is set to
+   wherever you're looking when you save.
+
+You can also edit an **existing** room in place by appending `?edit=1` to its
+URL (e.g. `hall.html?edit=1`) — its props and exits become selectable, and
+saving re-exports it.
+
+The editor lives inside `pano.js`, gated on `?edit=1`, so it reuses the viewer's
+exact projection — what you place is where visitors see it. `screenToAngles()`
+is the inverse of the `placeProps`/`placeHotspots` projection; if you ever
+change one, change the other, or right-click placement drifts from the render.
+
+## Adding a room by hand
+
+You rarely need this now that the editor exists, but the format is simple: copy
+any room file and change three things — the `data-pano` image, the `data-room`
+name, and the list of exits. No other file needs touching — styling and
+behaviour come from `pano.css` / `pano.js` automatically.
 
 ```html
 <body data-pano="images/pano-attic.png" data-room="The Attic" data-yaw="0" data-fov="80">

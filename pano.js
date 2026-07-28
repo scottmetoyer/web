@@ -31,6 +31,7 @@
   };
 
   const SRC        = q.get("img") || data.pano || "images/pano-hub.png";
+  const editMode   = flag("edit", false);   // ?edit=1 turns on the room editor
   const FOV_MIN    = 25, FOV_MAX = 110;
   const PITCH_MAX  = 85 * Math.PI / 180;   // never quite reach the poles
   const DRIFT_RATE = 0.9 * Math.PI / 180;  // idle auto-rotate, degrees/sec
@@ -274,21 +275,24 @@
   // ---------------------------------------------------------------------
   // A room writes <a class="hotspot" data-yaw data-pitch>Label</a>; the ring
   // and label markup is built here so room files stay a single line per exit.
-  const hotspots = [...document.querySelectorAll(".hotspot")].map((node) => {
+  // registerHotspot() is reused by the editor to add exits on the fly.
+  function registerHotspot(node) {
     const label = node.textContent.trim();
     node.textContent = "";
     const inner = el("span", { className: "inner" });
     inner.append(el("span", { className: "ring" }), el("span", { className: "label" }, label));
     node.append(inner);
     node.setAttribute("draggable", "false");
-    return {
-      node,
+    const spot = {
+      node, label,
       lonDeg: parseFloat(node.dataset.yaw) || 0,
       lon: (parseFloat(node.dataset.yaw) || 0) / DEG,
       lat: (parseFloat(node.dataset.pitch) || 0) / DEG,
       edge: null,
     };
-  });
+    return spot;
+  }
+  const hotspots = [...document.querySelectorAll(".hotspot")].map(registerHotspot);
 
   // Project each hotspot's world direction back into view space and onto the
   // screen — the exact inverse of the rotation the shader applies. Exits that
@@ -363,12 +367,13 @@
   // A room writes <button class="prop" data-src data-yaw data-pitch>, with a
   // <template> holding the dialog content. Everything else is built here.
   // ---------------------------------------------------------------------
-  const props = [...document.querySelectorAll(".prop")].map((node) => {
+  // registerProp() is reused by the editor to add props on the fly.
+  function registerProp(node) {
     const img = el("img", { src: node.dataset.src, alt: node.dataset.alt || "",
                             draggable: false });
     node.prepend(img);                 // the <template> stays for the dialog
     node.setAttribute("type", "button");
-    return {
+    const p = {
       node, img,
       lon: (parseFloat(node.dataset.yaw) || 0) / DEG,
       lat: (parseFloat(node.dataset.pitch) || 0) / DEG,
@@ -376,8 +381,35 @@
       anchor: node.dataset.anchor === "center" ? "-50%" : "-100%",
       visible: false, lastH: 0,
     };
-  });
+    return p;
+  }
+  const props = [...document.querySelectorAll(".prop")].map(registerProp);
   const propByNode = new Map(props.map((p) => [p.node, p]));
+
+  // Screen pixel -> the yaw/pitch you are aiming at, in degrees. The exact
+  // inverse of the projection in placeProps/placeHotspots, so a right-click in
+  // the editor lands a prop precisely where the cursor is. Reconstructs the
+  // shader's view ray, then rotates it by pitch and yaw the same way the shader
+  // does to recover the world direction.
+  function screenToAngles(px, py, w, h) {
+    const t = Math.tan(view.fov / 2);
+    const aspect = w / h;
+    const vx = ((px / w) * 2 - 1) * aspect * t;
+    const vy = (1 - (py / h) * 2) * t;
+    const vz = -1;
+    const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
+    const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw);
+    const ry = vy * cp - vz * sp;             // apply pitch
+    const rz = vy * sp + vz * cp;
+    const wx = vx * cy - rz * sy;             // then yaw
+    const wy = ry;
+    const wz = vx * sy + rz * cy;
+    const len = Math.hypot(wx, wy, wz) || 1;
+    return {
+      yawDeg: Math.atan2(wx / len, -wz / len) * DEG,
+      pitchDeg: Math.asin(Math.max(-1, Math.min(1, wy / len))) * DEG,
+    };
+  }
 
   // Project props the same way as hotspots, but size them by angular height so
   // they stay planted in the world — zoom in and the figure grows. Off-screen
@@ -465,6 +497,8 @@
 
   // Leaving a room fades out rather than cutting, so the rooms feel connected.
   document.addEventListener("click", (e) => {
+    // In the editor, clicks select and place — never navigate or open dialogs.
+    if (editMode) { if (e.target.closest(".prop, .hotspot")) e.preventDefault(); return; }
     // A drag that happens to start on a prop/hotspot is a look, not a click.
     const dragged = dragDist > 6;
 
@@ -672,9 +706,11 @@
 
     if (haveImage) {
       const deg = ((view.yaw * DEG) % 360 + 360) % 360;
-      const txt = COMPASS[Math.round(deg / 45) % 8].padEnd(2) + " " +
-                  deg.toFixed(0).padStart(3) + "°  ·  " +
-                  (view.fov * DEG).toFixed(0) + "° fov";
+      let txt = COMPASS[Math.round(deg / 45) % 8].padEnd(2) + " " +
+                deg.toFixed(0).padStart(3) + "°";
+      // The editor needs pitch too, to place things by aiming the camera.
+      if (editMode) txt += " · " + (view.pitch * DEG).toFixed(0).padStart(3) + "° pitch";
+      txt += "  ·  " + (view.fov * DEG).toFixed(0) + "° fov";
       if (txt !== lastReadout) { readout.textContent = txt; lastReadout = txt; }
     }
 
@@ -683,4 +719,289 @@
 
   requestAnimationFrame(frame);
   load(SRC, SRC);
+
+  // ---------------------------------------------------------------------
+  // Room editor (only when ?edit=1). Drop a panorama, right-click to place
+  // props/exits, drag to reposition, and save a room file to disk. All of it
+  // reuses the same projection and rendering as the viewer, so what you place
+  // is exactly where it lands for visitors.
+  // ---------------------------------------------------------------------
+  if (editMode) initEditor();
+
+  function initEditor() {
+    document.body.classList.add("editing");
+    view.drift = false;                      // no idle drift while authoring
+
+    const baseName = (s) => (s || "").split("/").pop();
+    const esc = (s) => (s || "").replace(/[&<>"]/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const roundTo = (v, n = 1) => (+v).toFixed(n);
+
+    // Containers may not exist if editing a room that had no props/exits yet.
+    const propBox = propLayer || stage.appendChild(el("div", { id: "props" }));
+    const hotBox = nav || stage.appendChild(el("nav", { id: "hotspots" }));
+
+    let bgName = baseName(data.pano) || "pano-hub.png";
+    // Fresh editor.html: the first dropped image is the background. Editing an
+    // existing room: it already has one, so every drop is a prop.
+    let bgSet = data.fresh !== "1";
+    let brush = null;                        // what right-click will place
+    let selected = null, moving = null, movePointer = null;
+    const assets = new Map();                // dropped file name -> Blob
+
+    // --- editor chrome ------------------------------------------------------
+    const bar = el("div", { id: "ed-bar", className: "overlay" });
+    const nameField = el("input", { id: "ed-name", type: "text", value: data.room || "Untitled" });
+    nameField.setAttribute("aria-label", "Room name");
+    const bgLabel = el("span", { className: "ed-bg" }, "bg: " + bgName);
+    const tray = el("div", { id: "ed-tray" });
+    const exitBrush = el("button", { className: "ed-chip ed-exit", type: "button" }, "+ exit");
+    const saveBtn = el("button", { id: "ed-save", type: "button" }, "save room ↓");
+    bar.append(nameField, bgLabel, el("span", { className: "ed-sep" }), tray, exitBrush,
+               el("span", { className: "ed-spacer" }), saveBtn);
+
+    const panel = el("div", { id: "ed-panel", className: "overlay", hidden: true });
+    const help = el("div", { id: "ed-help", className: "overlay" },
+      "drop a panorama to set the background · drop images to add them · " +
+      "<b>right-click</b> to place · drag to move · <b>del</b> to remove");
+    document.body.append(bar, panel, help);
+
+    // --- brushes / tray -----------------------------------------------------
+    function setBrush(b, chip) {
+      brush = b;
+      [...tray.children, exitBrush].forEach((c) => c.classList.remove("on"));
+      if (chip) chip.classList.add("on");
+    }
+    function addTrayImage(name, url) {
+      const chip = el("button", { className: "ed-chip", type: "button", title: name });
+      chip.append(el("img", { src: url, alt: "", draggable: false }));
+      chip.addEventListener("click", () =>
+        setBrush({ kind: "prop", live: url, src: "images/" + name, name: name.replace(/\.\w+$/, "") }, chip));
+      tray.append(chip);
+      setBrush({ kind: "prop", live: url, src: "images/" + name, name: name.replace(/\.\w+$/, "") }, chip);
+    }
+    exitBrush.addEventListener("click", () => setBrush({ kind: "exit" }, exitBrush));
+
+    // --- background ---------------------------------------------------------
+    function setBackground(name, url) {
+      bgName = name;
+      bgLabel.textContent = "bg: " + name;
+      load(url, name);
+    }
+
+    // --- add / move / select ------------------------------------------------
+    function addProp(b, yawDeg, pitchDeg) {
+      const node = el("button", { className: "prop", type: "button" });
+      Object.assign(node.dataset, { src: b.live, alt: b.name,
+        yaw: roundTo(yawDeg), pitch: roundTo(pitchDeg), height: "34" });
+      const tpl = document.createElement("template");
+      tpl.innerHTML = `<h2>${esc(b.name)}</h2>\n      <p></p>`;
+      node.append(tpl);
+      propBox.append(node);
+      const p = registerProp(node);
+      p.exportSrc = b.src;                   // images/… path for the saved file
+      p.title = b.name; p.body = ""; p.alt = b.name;
+      props.push(p); propByNode.set(node, p);
+      select(p);
+      return p;
+    }
+    function addExit(yawDeg, pitchDeg) {
+      const node = el("a", { className: "hotspot", href: "index.html" });
+      Object.assign(node.dataset, { yaw: roundTo(yawDeg), pitch: roundTo(pitchDeg) });
+      node.textContent = "Exit";
+      hotBox.append(node);
+      const spot = registerHotspot(node);
+      hotspots.push(spot);
+      select(spot);
+      return spot;
+    }
+    function moveItem(item, yawDeg, pitchDeg) {
+      item.lon = yawDeg / DEG; item.lat = pitchDeg / DEG;
+      if ("lonDeg" in item) item.lonDeg = yawDeg;
+      item.node.dataset.yaw = roundTo(yawDeg);
+      item.node.dataset.pitch = roundTo(pitchDeg);
+    }
+    function removeItem(item) {
+      item.node.remove();
+      let i = props.indexOf(item);
+      if (i >= 0) { props.splice(i, 1); propByNode.delete(item.node); }
+      i = hotspots.indexOf(item);
+      if (i >= 0) hotspots.splice(i, 1);
+      if (selected === item) select(null);
+    }
+
+    // --- selection panel ----------------------------------------------------
+    function field(label, input) {
+      const row = el("label", { className: "ed-field" }, "<span>" + label + "</span>");
+      row.append(input);
+      return row;
+    }
+    function select(item) {
+      if (selected) selected.node.classList.remove("selected");
+      selected = item;
+      panel.hidden = !item;
+      panel.textContent = "";
+      if (!item) return;
+      item.node.classList.add("selected");
+      const isProp = "img" in item;
+
+      if (isProp) {
+        const size = el("input", { type: "range", min: "6", max: "90", step: "1",
+                                   value: String(item.heightDeg) });
+        size.addEventListener("input", () => {
+          item.heightDeg = parseFloat(size.value);
+          item.node.dataset.height = size.value;
+        });
+        const title = el("input", { type: "text", value: item.title || "" });
+        title.addEventListener("input", () => { item.title = title.value; });
+        const body = el("textarea", { rows: "3", value: item.body || "" });
+        body.addEventListener("input", () => { item.body = body.value; });
+        panel.append(el("h3", {}, "Prop"), field("size (°)", size),
+                     field("dialog title", title), field("dialog body", body));
+      } else {
+        const label = el("input", { type: "text", value: item.label || "Exit" });
+        label.addEventListener("input", () => {
+          item.label = label.value;
+          item.node.querySelector(".label").textContent = label.value;
+        });
+        const href = el("input", { type: "text", value: item.node.getAttribute("href") || "" });
+        href.addEventListener("input", () => item.node.setAttribute("href", href.value));
+        panel.append(el("h3", {}, "Exit"), field("label", label), field("links to", href));
+      }
+      const del = el("button", { className: "ed-del", type: "button" }, "delete");
+      del.addEventListener("click", () => removeItem(item));
+      panel.append(del);
+    }
+
+    // --- pointer / placement ------------------------------------------------
+    // Capture phase so we can claim an item before the viewer starts a look.
+    stage.addEventListener("pointerdown", (e) => {
+      const node = e.target.closest(".prop, .hotspot");
+      if (node) {
+        e.stopPropagation();
+        const item = propByNode.get(node) || hotspots.find((h) => h.node === node);
+        select(item);
+        moving = item; movePointer = e.pointerId;
+      } else {
+        select(null);                        // click empty space to deselect
+      }
+    }, true);
+    addEventListener("pointermove", (e) => {
+      if (!moving || e.pointerId !== movePointer) return;
+      e.stopPropagation();
+      const a = screenToAngles(e.clientX, e.clientY, stage.clientWidth, stage.clientHeight);
+      moveItem(moving, a.yawDeg, a.pitchDeg);
+    }, true);
+    addEventListener("pointerup", () => { moving = null; movePointer = null; }, true);
+
+    stage.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (!brush) { flash("pick something to place first"); return; }
+      const a = screenToAngles(e.clientX, e.clientY, stage.clientWidth, stage.clientHeight);
+      if (brush.kind === "exit") addExit(a.yawDeg, a.pitchDeg);
+      else addProp(brush, a.yawDeg, a.pitchDeg);
+    });
+
+    addEventListener("keydown", (e) => {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+        e.preventDefault();
+        removeItem(selected);
+      }
+    });
+
+    // --- drops route to background / tray -----------------------------------
+    addEventListener("drop", (e) => {
+      const files = [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith("image/"));
+      if (!files.length) return;
+      e.preventDefault(); e.stopPropagation();
+      dropEl.classList.remove("on");
+      for (const f of files) {
+        const url = URL.createObjectURL(f);
+        assets.set(f.name, f);
+        if (!bgSet) { setBackground(f.name, url); bgSet = true; }
+        else addTrayImage(f.name, url);
+      }
+    }, true);
+
+    // --- save ---------------------------------------------------------------
+    function propTemplate(p) {
+      if (p.title !== undefined)
+        return `<h2>${esc(p.title)}</h2>\n      <p>${esc(p.body || "")}</p>`;
+      const t = p.node.querySelector("template");
+      return t ? t.innerHTML.trim() : "";
+    }
+    function buildHtml() {
+      const room = nameField.value || "Untitled";
+      const yaw = roundTo(view.yaw * DEG), fov = (view.fov * DEG).toFixed(0);
+      const exits = hotspots.map((h) =>
+        `  <a class="hotspot" href="${esc(h.node.getAttribute("href") || "#")}" ` +
+        `data-yaw="${roundTo(h.lon * DEG)}" data-pitch="${roundTo(h.lat * DEG)}">` +
+        `${esc(h.label || "Exit")}</a>`).join("\n");
+      const propsOut = props.map((p) =>
+        `  <button class="prop" data-src="${esc(p.exportSrc || p.node.dataset.src)}" ` +
+        `data-alt="${esc(p.alt || p.title || "")}"\n` +
+        `          data-yaw="${roundTo(p.lon * DEG)}" data-pitch="${roundTo(p.lat * DEG)}" ` +
+        `data-height="${p.heightDeg.toFixed(0)}">\n` +
+        `    <template>\n      ${propTemplate(p)}\n    </template>\n  </button>`).join("\n");
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<title>${esc(room)} — Scott Metoyer</title>
+<meta name="description" content="A 360° space you can look around in.">
+<meta property="og:title" content="${esc(room)}">
+<meta property="og:description" content="A 360° space you can look around in.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="pano.css">
+</head>
+
+<body data-pano="images/${esc(bgName)}" data-room="${esc(room)}" data-yaw="${yaw}" data-fov="${fov}">
+
+<div id="props">
+${propsOut}
+</div>
+
+<nav id="hotspots">
+${exits}
+</nav>
+
+<noscript>This place needs JavaScript to render. The exits are below.</noscript>
+
+<script src="pano.js"></script>
+</body>
+</html>
+`;
+    }
+    function download(name, blob) {
+      const url = URL.createObjectURL(blob);
+      const a = el("a", { href: url, download: name });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+    saveBtn.addEventListener("click", () => {
+      const room = (nameField.value || "untitled").toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "untitled";
+      download(room + ".html", new Blob([buildHtml()], { type: "text/html" }));
+      // Hand back any dropped images too, so they can go into images/.
+      assets.forEach((blob, fname) => download(fname, blob));
+      flash(assets.size
+        ? "saved " + room + ".html + " + assets.size + " image(s) — move them into images/"
+        : "saved " + room + ".html");
+    });
+
+    // --- little transient toast --------------------------------------------
+    let flashTimer = 0;
+    const toast = el("div", { id: "ed-toast", className: "overlay" });
+    document.body.append(toast);
+    function flash(msg) {
+      toast.textContent = msg;
+      toast.classList.add("on");
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => toast.classList.remove("on"), 2600);
+    }
+
+    // Existing props/exits (when editing a real room) are already selectable.
+  }
 })();
