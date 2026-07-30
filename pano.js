@@ -756,6 +756,7 @@
     let bgName = baseName(data.pano) || "pano-hub.png";
     let brush = null;                        // what right-click will place
     let selected = null, moving = null, movePointer = null;
+    let downAt = null, dragging = false;     // for the click-vs-drag threshold
     const assets = new Map();                // dropped file name -> Blob
 
     // --- editor chrome ------------------------------------------------------
@@ -906,17 +907,23 @@
         const item = propByNode.get(node) || hotspots.find((h) => h.node === node);
         select(item);
         moving = item; movePointer = e.pointerId;
+        downAt = { x: e.clientX, y: e.clientY }; dragging = false;
       } else {
         select(null);                        // click empty space to deselect
       }
     }, true);
     addEventListener("pointermove", (e) => {
       if (!moving || e.pointerId !== movePointer) return;
+      // Don't move on a plain click: only start dragging once the pointer has
+      // travelled past a small threshold, so a couple pixels of jitter while
+      // selecting doesn't yank the item's anchor onto the cursor.
+      if (!dragging && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5) return;
+      dragging = true;
       e.stopPropagation();
       const a = screenToAngles(e.clientX, e.clientY, stage.clientWidth, stage.clientHeight);
       moveItem(moving, a.yawDeg, a.pitchDeg);
     }, true);
-    addEventListener("pointerup", () => { moving = null; movePointer = null; }, true);
+    addEventListener("pointerup", () => { moving = null; movePointer = null; dragging = false; }, true);
 
     stage.addEventListener("contextmenu", (e) => {
       e.preventDefault();
