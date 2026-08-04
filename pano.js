@@ -686,6 +686,17 @@
   let lastReadout = "";
   let prev = performance.now();
 
+  // While the tab is backgrounded, requestAnimationFrame pauses but lastInput
+  // stays frozen — so returning after more than IDLE_AFTER would satisfy the
+  // idle test immediately and the view would already be drifting when you look
+  // back. Treat becoming visible as fresh activity: reset the idle clock, reset
+  // the frame timer so the first dt isn't a lurch, and stop any coasting.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    lastInput = prev = performance.now();
+    view.vYaw = view.vPitch = 0;
+  });
+
   function frame(now) {
     const dt = Math.min((now - prev) / 1000, 0.1);
     prev = now;
@@ -701,7 +712,7 @@
       if (Math.abs(view.vYaw) < 1e-5) view.vYaw = 0;
       if (Math.abs(view.vPitch) < 1e-5) view.vPitch = 0;
 
-      if (view.drift && view.vYaw === 0 && now - lastInput > IDLE_AFTER) {
+      if (view.drift && !document.hidden && view.vYaw === 0 && now - lastInput > IDLE_AFTER) {
         view.yaw += DRIFT_RATE * dt;
       }
     }
