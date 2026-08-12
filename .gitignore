@@ -1,0 +1,3 @@
+# add_prop.py imports make_sprites.py, which leaves bytecode behind.
+__pycache__/
+.DS_Store

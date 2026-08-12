@@ -20,6 +20,7 @@ clicking hotspots painted into the space.
 - `images/CREDITS.md` — where non-generated art came from, and its license.
 - `make_panos.py` — regenerates those placeholder panoramas.
 - `make_sprites.py` — regenerates the placeholder prop sprites.
+- `add_prop.py` — finds real art and plants it in a room (see below).
 - `deck.html`, `site.deck`, `index.deck`, `customize.py` — **legacy**, see below.
 
 ## The room editor (`editor.html`)
@@ -117,6 +118,45 @@ wayfinding). The dialog is a native `<dialog>` — Esc, backdrop-click and focus
 trapping come for free, and focus returns to the prop on close. Without
 JavaScript the buttons stay hidden rather than rendering broken.
 
+## Populating the world (`add_prop.py`)
+
+Putting a thing in a room means finding art you're allowed to use, cutting it
+out cleanly, and writing the prop markup. This does all three:
+
+    ./add_prop.py search "businessman" --preview     # → /tmp/prop-preview/*.png
+    ./add_prop.py add oc:337378/young-indian-businessman --name suit \
+        --room index.html --yaw 24 --pitch -20 --height 34 \
+        --alt "A man in a suit" --title "Someone" --body "<p>Hello.</p>"
+
+The source can be an openclipart id (`oc:337378`, optionally `oc:ID/slug`), a
+`commons:File:Foo.svg`, any URL, or **a file on this machine** — same command
+either way:
+
+    ./add_prop.py add ~/Pictures/statue.jpg --name statue --yaw 90 --knockout-white
+
+- **Search defaults to Openclipart because everything there is CC0**, so nothing
+  we plant carries an attribution obligation. Commons is searchable too
+  (`--source commons`) but most of its usable clipart is CC BY-SA, so the
+  license is printed and non-free ones warn. Every add is logged to
+  `images/CREDITS.md`; `--author` / `--license` override what gets recorded,
+  which is how a local file gets honest provenance.
+- `--preview` renders the candidates to PNGs so you can *look* before choosing.
+  Worth doing — search text lies about what a piece actually looks like.
+- **Cutout:** SVGs are rasterised with `rsvg-convert`, everything else through
+  `sips` (so JPEG/PNG/TIFF/WebP all work). `--knockout-white` flood-fills the
+  white background transparent *from the edges inward*, so an interior white —
+  a shirt, the whites of eyes — survives. The result is always cropped to its
+  alpha bounding box, because the prop anchors at bottom-centre: transparent
+  padding under the feet would leave the thing hovering.
+- **Re-running `add` with `--force` replaces the prop in place**, which is how
+  you nudge yaw/pitch/height — but it overwrites hand-edited dialog HTML.
+  Without `--force` it refuses rather than planting a duplicate.
+- `--no-wire` just prints the snippet; `--body-file` reads dialog HTML from a
+  file when it's more than one line.
+
+For placing things by eye rather than by angle, the editor (`?edit=1`) is still
+the better tool — this is for when you know roughly where it goes and want the
+art fetched, cut out, credited and wired in one step.
 
 ## The viewer engine (`pano.js`)
 
