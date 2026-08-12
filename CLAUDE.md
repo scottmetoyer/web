@@ -17,6 +17,7 @@ clicking hotspots painted into the space.
 - `editor.html` — the room editor (see below). Not part of the site graph.
 - `images/pano-*.png` — one panorama per room. Placeholders for now.
 - `images/sprite-*.png` — transparent prop images (see Props below).
+- `images/CREDITS.md` — where non-generated art came from, and its license.
 - `make_panos.py` — regenerates those placeholder panoramas.
 - `make_sprites.py` — regenerates the placeholder prop sprites.
 - `deck.html`, `site.deck`, `index.deck`, `customize.py` — **legacy**, see below.
@@ -87,7 +88,7 @@ world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
 
 ```html
 <div id="props">
-  <button class="prop" data-src="images/sprite-figure.png" data-alt="A figure"
+  <button class="prop" data-src="images/sprite-suit.png" data-alt="A man in a suit"
           data-yaw="24" data-pitch="-20" data-height="34">
     <template>
       <h2>Someone</h2>
@@ -104,15 +105,18 @@ world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
 - `data-height` is the prop's size in **degrees of view**, not pixels. That is
   what keeps it planted: zoom in and it grows with the scene, because its pixel
   height is `data-height / fov * viewportHeight` each frame.
-- `data-src` is a transparent PNG. `make_sprites.py` generates the placeholders
-  (`images/sprite-*.png`, RGBA). The `<template>` holds the dialog content and
-  is cloned into one shared native `<dialog>` on click.
+- `data-src` is a transparent PNG, cropped tight to its alpha so the bottom edge
+  really is the figure's feet. `make_sprites.py` generates placeholder sprites
+  procedurally; real art goes in `images/` the same way (see `images/CREDITS.md`
+  for where the non-generated sprites came from). The `<template>` holds the
+  dialog content and is cloned into one shared native `<dialog>` on click.
 
 Like hotspots, props are projected every frame and a drag that starts on one is
 a look, not a click. Off-screen props are simply hidden (an object needs no
 wayfinding). The dialog is a native `<dialog>` — Esc, backdrop-click and focus
 trapping come for free, and focus returns to the prop on close. Without
 JavaScript the buttons stay hidden rather than rendering broken.
+
 
 ## The viewer engine (`pano.js`)
 
