@@ -104,8 +104,17 @@ world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
   something standing on the ground. `data-anchor="center"` anchors by the middle
   instead.
 - `data-height` is the prop's size in **degrees of view**, not pixels. That is
-  what keeps it planted: zoom in and it grows with the scene, because its pixel
-  height is `data-height / fov * viewportHeight` each frame.
+  what keeps it planted: zoom in and it grows with the scene. Its pixel height
+  is found each frame by projecting *both ends* of the vertical span it occupies
+  in the world — its anchor, and the point `data-height` degrees above that —
+  and measuring how far apart they land on screen. Sizing it by angle alone
+  (`data-height / fov * viewportHeight`) looks right but is only accurate near
+  the middle of a narrow view: the projection is rectilinear, so it stretches
+  away from the view axis. That approximation made the prop 32% oversized at
+  100° fov and 2% undersized at 20°, so it visibly shrank against the background
+  as you zoomed in — fixed 2026-08-13. If you touch the sizing, check it against
+  the painted-in posts of `pano-hub.png`, which scale with the background by
+  construction.
 - `data-src` is a transparent PNG, cropped tight to its alpha so the bottom edge
   really is the figure's feet. `make_sprites.py` generates placeholder sprites
   procedurally; real art goes in `images/` the same way (see `images/CREDITS.md`

@@ -378,6 +378,7 @@
       lon: (parseFloat(node.dataset.yaw) || 0) / DEG,
       lat: (parseFloat(node.dataset.pitch) || 0) / DEG,
       heightDeg: parseFloat(node.dataset.height) || 30,   // angular height
+      centered: node.dataset.anchor === "center",
       anchor: node.dataset.anchor === "center" ? "-50%" : "-100%",
       visible: false, lastH: 0,
     };
@@ -411,38 +412,76 @@
     };
   }
 
+  // Project one world direction (lat/lon, radians) to the screen, exactly as
+  // the shader does. Writes into a scratch object: this runs several times per
+  // prop per frame and has no business allocating.
+  function projectDir(lat, lon, v, w, h, out) {
+    const cl = Math.cos(lat);
+    const wx = cl * Math.sin(lon);
+    const wy = Math.sin(lat);
+    const wz = -cl * Math.cos(lon);
+
+    const x = wx * v.cy + wz * v.sy;             // undo yaw
+    const zy = -wx * v.sy + wz * v.cy;
+    const y = wy * v.cp + zy * v.sp;             // then undo pitch
+    const z = -wy * v.sp + zy * v.cp;
+
+    out.front = z < -1e-3;
+    if (out.front) {
+      out.ndcX = (x / -z) / (v.aspect * v.t);
+      out.ndcY = (y / -z) / v.t;
+      out.px = (out.ndcX * 0.5 + 0.5) * w;
+      out.py = (0.5 - out.ndcY * 0.5) * h;
+    }
+    return out;
+  }
+  const dirAnchor = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
+  const dirFoot = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
+  const dirHead = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
+  const viewConst = { cy: 0, sy: 0, cp: 0, sp: 0, t: 0, aspect: 1 };
+
   // Project props the same way as hotspots, but size them by angular height so
   // they stay planted in the world — zoom in and the figure grows. Off-screen
   // props are simply hidden; unlike an exit, an object needs no wayfinding.
   function placeProps(w, h) {
     if (!props.length) return;
-    const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw);
-    const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
-    const t = Math.tan(view.fov / 2);
-    const aspect = w / h;
-    const pxPerRad = h / view.fov;
+    const v = viewConst;
+    v.cy = Math.cos(view.yaw); v.sy = Math.sin(view.yaw);
+    v.cp = Math.cos(view.pitch); v.sp = Math.sin(view.pitch);
+    v.t = Math.tan(view.fov / 2);
+    v.aspect = w / h;
 
     for (const p of props) {
-      const cl = Math.cos(p.lat);
-      const wx = cl * Math.sin(p.lon);
-      const wy = Math.sin(p.lat);
-      const wz = -cl * Math.cos(p.lon);
+      const span = p.heightDeg / DEG;
+      const anchor = projectDir(p.lat, p.lon, v, w, h, dirAnchor);
 
-      const x = wx * cy + wz * sy;
-      const zy = -wx * sy + wz * cy;
-      const y = wy * cp + zy * sp;
-      const z = -wy * sp + zy * cp;
+      // Size by projecting the two ends of the vertical span the prop occupies
+      // in the world — its anchor and the point `span` radians above it — and
+      // measuring how far apart they land. Sizing by angle alone
+      // (height/fov * viewportHeight) is only right near the middle of a narrow
+      // view: the projection is rectilinear, so it stretches away from the view
+      // axis, and a prop sized that way drifts out of scale with the background
+      // as you zoom — visibly shrinking as you zoom in.
+      let ph = 0;
+      if (anchor.front) {
+        const half = p.centered ? span / 2 : 0;   // bottom-anchored: feet == anchor
+        const foot = p.centered ? projectDir(p.lat - half, p.lon, v, w, h, dirFoot) : anchor;
+        const head = projectDir(p.lat + span - half, p.lon, v, w, h, dirHead);
+        ph = foot.front && head.front
+          ? Math.hypot(head.px - foot.px, head.py - foot.py)
+          // An end behind the camera has no projection; fall back to the
+          // on-axis size, which is right at the centre and never absurd.
+          : h * Math.tan(Math.min(span, Math.PI * 0.98) / 2) / v.t;
+      }
 
-      // Angular half-extent of the sprite in NDC, so a tall prop stays visible
-      // while its anchor (its feet) is still just below the frame.
-      const spanY = (p.heightDeg / DEG) / (view.fov / 2);
-      let show = z < -1e-3, px = 0, py = 0;
+      // NDC half-extent of the sprite, so a tall prop stays visible while its
+      // anchor (its feet) is still just below the frame.
+      const spanY = 2 * ph / h;
+      let show = anchor.front, px = 0, py = 0;
       if (show) {
-        const ndcX = (x / -z) / (aspect * t);
-        const ndcY = (y / -z) / t;
-        show = Math.abs(ndcX) < 1.4 && ndcY > -1 - spanY && ndcY < 1.2;
-        px = (ndcX * 0.5 + 0.5) * w;
-        py = (0.5 - ndcY * 0.5) * h;
+        show = Math.abs(anchor.ndcX) < 1.4 && anchor.ndcY > -1 - spanY && anchor.ndcY < 1.2;
+        px = anchor.px;
+        py = anchor.py;
       }
 
       if (show !== p.visible) {
@@ -452,7 +491,6 @@
         else p.node.setAttribute("tabindex", "-1");
       }
       if (show) {
-        const ph = (p.heightDeg / DEG) * pxPerRad;
         if (Math.abs(ph - p.lastH) > 0.5) {
           p.img.style.height = ph.toFixed(1) + "px";
           p.lastH = ph;
