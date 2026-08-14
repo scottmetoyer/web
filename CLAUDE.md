@@ -17,6 +17,7 @@ clicking hotspots painted into the space.
 - `editor.html` — the room editor (see below). Not part of the site graph.
 - `images/pano-*.png` — one panorama per room. Placeholders for now.
 - `images/sprite-*.png` — transparent prop images (see Props below).
+- `images/bake-*.png` — cutouts baked into a panorama (see Baking below).
 - `images/CREDITS.md` — where non-generated art came from, and its license.
 - `make_panos.py` — regenerates those placeholder panoramas.
 - `make_sprites.py` — regenerates the placeholder prop sprites.
@@ -208,8 +209,10 @@ and check the right thing is centered:
       --window-size=900,560 --virtual-time-budget=6000 \
       --screenshot=out.png "http://localhost:8777/?yaw=90&drift=0"
 
-In `pano-hub.png` the cardinal posts are N=red, E=yellow, S=green, W=blue, so
-a screenshot immediately shows whether orientation is right. Note that
+In `pano-hub.png` the cardinal markers are N=Snake Mountain, E=yellow post,
+S=green post, W=blue post, so a screenshot immediately shows whether
+orientation is right. (North used to be a red post; the baked-in mountain
+replaced it.) Note that
 `requestAnimationFrame` is throttled under headless virtual time, so the
 on-screen readout won't update — screenshot the rendered frame instead of
 scraping the DOM.
@@ -234,6 +237,37 @@ template for code-generated panoramas. `./make_panos.py void` rebuilds one.
 
 These are stand-ins. Real art goes in the same place — drop a 2:1 image in
 `images/` and point a room's `data-pano` at it.
+
+### Baking scenery into a panorama
+
+Some things belong in the view rather than on top of it — a landmark on the
+horizon, not a thing you click. Those get **baked** into the sphere by
+`make_panos.py`, listed in `BAKED` by room:
+
+```python
+BAKED = {
+    "hub": [("images/bake-snake-mountain.png", 0.0, -9.0, 30.0)],   # due north
+}
+```
+
+The angles read like a prop's: yaw/pitch aim at the bottom-centre where it meets
+the ground, and height is its angular height in degrees. `bake()` paints the
+cutout as a plane tangent to the sphere facing the middle of it — the same
+geometry the viewer uses to project a prop — so it looks undistorted head on and
+curves into the equirectangular grid the way the rest of the scene does.
+Sampling is premultiplied, or the transparent surround bleeds a pale fringe into
+every edge, and the cutout is area-downsampled to its footprint first, because
+dropping a 900px photo straight into a ~170px-wide patch of sphere aliases
+badly.
+
+**Baked vs. prop.** Baked art costs nothing at runtime and cannot drift out of
+scale, but it is stuck at the panorama's resolution — soft if you zoom right in
+— and it can't be clicked. A prop stays sharp at any zoom and opens a dialog.
+Landmark → bake; anything you interact with → prop (`add_prop.py`).
+
+Keep the source cutout in `images/bake-*.png`: baking happens at generate time,
+so `./make_panos.py hub` must be able to redo it. Editing `pano-hub.png` by hand
+would be silently undone the next time anyone regenerates.
 
 ## Legacy: the Decker deck
 

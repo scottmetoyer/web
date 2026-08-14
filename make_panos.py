@@ -18,6 +18,8 @@ import zlib
 
 import numpy as np
 
+from make_sprites import read_png_rgba
+
 W, H = 2048, 1024
 GROUND = -1.6          # eye height above the floor plane, in metres-ish
 
@@ -103,9 +105,11 @@ def hub():
 
     img = np.where((dy > 0.0)[..., None], sky, ground)
 
-    # Cardinal posts, so orientation stays unambiguous while testing.
+    # Cardinal posts, so orientation stays unambiguous while testing. North has
+    # no post any more — Snake Mountain is baked in there instead (see BAKED),
+    # and it marks north far better than a striped pole did.
     lon_deg, lat_deg = np.degrees(lon) % 360.0, np.degrees(lat)
-    for m_lon, color in [(0.0, (232, 74, 74)), (90.0, (240, 190, 70)),
+    for m_lon, color in [(90.0, (240, 190, 70)),
                          (180.0, (110, 200, 130)), (270.0, (100, 150, 235))]:
         delta = np.abs((lon_deg - m_lon + 180.0) % 360.0 - 180.0)
         post = (delta < 2.6) & (lat_deg > -9.0) & (lat_deg < 21.0)
@@ -221,6 +225,91 @@ SCENES = {"hub": hub, "void": void, "hall": hall}
 
 
 # ---------------------------------------------------------------------------
+# Baked-in art: real images painted into the procedural sphere.
+# ---------------------------------------------------------------------------
+# Scenery that isn't worth generating and shouldn't be a prop — a prop is a
+# thing you click, this is just part of the view. Baking keeps it in the
+# panorama, so it costs nothing at runtime and can't drift out of scale.
+# Angles match a prop's: yaw/pitch aim at the bottom-centre where it meets the
+# ground, height is its angular height in degrees.
+BAKED = {
+    "hub": [("images/bake-snake-mountain.png", 0.0, -9.0, 30.0)],   # due north
+}
+
+
+def _box_down(arr, n_out, axis):
+    """Area-average `arr` down to n_out samples along `axis`."""
+    n_in = arr.shape[axis]
+    if n_out >= n_in:
+        return arr
+    edges = np.arange(n_out) * n_in // n_out
+    total = np.add.reduceat(arr, edges, axis=axis)
+    count = np.diff(np.append(edges, n_in)).astype(np.float64)
+    shape = [1] * arr.ndim
+    shape[axis] = n_out
+    return total / count.reshape(shape)
+
+
+def bake(img, path, yaw_deg, pitch_deg, height_deg):
+    """Paint a transparent cutout into the sphere as an upright flat billboard.
+
+    The image is treated as a plane tangent to the sphere and facing the middle
+    of it — the same geometry the viewer uses to project a prop — so it looks
+    undistorted head on and bends into the equirectangular grid the way real
+    scenery does. Sampling is premultiplied throughout, or the transparent
+    surround would bleed a pale fringe into every edge.
+    """
+    art = read_png_rgba(path).astype(np.float64)
+    alpha = art[:, :, 3:4] / 255.0
+    art = np.concatenate([art[:, :, :3] * alpha, alpha], axis=2)   # premultiplied
+
+    half_v = np.tan(np.radians(height_deg) / 2.0)
+    half_u = half_v * (art.shape[1] / art.shape[0])
+
+    # Shrink to roughly the footprint it will occupy before sampling: dropping a
+    # 900px photo straight into a ~170px-wide patch of sphere aliases badly.
+    want_h = max(1, int(round(height_deg / 180.0 * H)))
+    want_w = max(1, int(round(np.degrees(2 * np.arctan(half_u)) / 360.0 * W)))
+    art = _box_down(_box_down(art, want_h, 0), want_w, 1)
+    ah, aw = art.shape[:2]
+
+    _, _, dx, dy, dz = directions()
+    c_lat, c_lon = np.radians(pitch_deg + height_deg / 2.0), np.radians(yaw_deg)
+    c = np.array([np.cos(c_lat) * np.sin(c_lon), np.sin(c_lat),
+                  -np.cos(c_lat) * np.cos(c_lon)])
+    right = np.cross(c, [0.0, 1.0, 0.0])
+    right /= np.linalg.norm(right)
+    up = np.cross(right, c)
+
+    # Where each ray meets that tangent plane, in the plane's own coordinates.
+    denom = dx * c[0] + dy * c[1] + dz * c[2]
+    front = denom > 1e-6
+    safe = np.where(front, denom, 1.0)
+    hx, hy, hz = dx / safe, dy / safe, dz / safe
+    u = hx * right[0] + hy * right[1] + hz * right[2]
+    v = hx * up[0] + hy * up[1] + hz * up[2]
+
+    sx = (u / half_u * 0.5 + 0.5) * (aw - 1)
+    sy = (0.5 - v / half_v * 0.5) * (ah - 1)
+    hit = front & (sx >= 0) & (sx <= aw - 1) & (sy >= 0) & (sy <= ah - 1)
+    if not hit.any():
+        return img
+
+    ys, xs = np.nonzero(hit)
+    fx, fy = sx[hit], sy[hit]
+    x0, y0 = np.floor(fx).astype(int), np.floor(fy).astype(int)
+    x1, y1 = np.minimum(x0 + 1, aw - 1), np.minimum(y0 + 1, ah - 1)
+    tx, ty = (fx - x0)[:, None], (fy - y0)[:, None]
+    top = art[y0, x0] * (1 - tx) + art[y0, x1] * tx
+    bot = art[y1, x0] * (1 - tx) + art[y1, x1] * tx
+    samp = top * (1 - ty) + bot * ty
+
+    a = samp[:, 3:4]
+    img[ys, xs] = img[ys, xs] * (1.0 - a) + samp[:, :3]
+    return img
+
+
+# ---------------------------------------------------------------------------
 
 def write_png(path: str, rgb: np.ndarray) -> None:
     h, w, _ = rgb.shape
@@ -254,7 +343,11 @@ def main(argv) -> int:
 
     for name in wanted:
         out = f"images/pano-{name}.png"
-        write_png(out, np.clip(SCENES[name](), 0.0, 255.0).astype(np.uint8))
+        img = SCENES[name]()
+        for art, yaw, pitch, height in BAKED.get(name, []):
+            img = bake(img, art, yaw, pitch, height)
+            print(f"  baked {art} at yaw {yaw:g}°, {height:g}° tall")
+        write_png(out, np.clip(img, 0.0, 255.0).astype(np.uint8))
         print(f"wrote {out} ({W}x{H})")
     return 0
 
