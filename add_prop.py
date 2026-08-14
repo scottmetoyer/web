@@ -52,7 +52,7 @@ import zlib
 
 import numpy as np
 
-from make_sprites import write_png_rgba
+from make_sprites import read_png_rgba, write_png_rgba
 
 UA = {"User-Agent": "scottmetoyer-web/1.0 (https://github.com/scottmetoyer)"}
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -201,75 +201,6 @@ def run(cmd):
     if p.returncode:
         sys.exit(f"{cmd[0]} failed: {p.stderr.strip() or p.stdout.strip()}")
 
-
-CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}            # PNG colour type → samples/pixel
-
-
-def read_png_rgba(path):
-    """Minimal 8-bit PNG decoder → RGBA (the counterpart to write_png_rgba).
-
-    Handles grey / RGB / palette / grey+alpha / RGBA, since `sips` hands back
-    plain RGB for a JPEG and palette PNGs turn up in the wild. Not interlaced.
-    """
-    data = open(path, "rb").read()
-    if data[:8] != b"\x89PNG\r\n\x1a\n":
-        sys.exit(f"not a PNG: {path}")
-    pos, idat, plte, trns = 8, b"", None, None
-    while pos < len(data):
-        (n,) = struct.unpack(">I", data[pos:pos + 4])
-        tag, body = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + n]
-        if tag == b"IHDR":
-            w, h, depth, ctype, _, _, interlace = struct.unpack(">IIBBBBB", body)
-            if depth != 8 or interlace or ctype not in CHANNELS:
-                sys.exit(f"unsupported PNG (depth={depth} colour={ctype} interlace={interlace})")
-        elif tag == b"PLTE":
-            plte = np.frombuffer(body, np.uint8).reshape(-1, 3)
-        elif tag == b"tRNS":
-            trns = np.frombuffer(body, np.uint8)
-        elif tag == b"IDAT":
-            idat += body
-        pos += 12 + n
-
-    ch = CHANNELS[ctype]
-    raw, stride = zlib.decompress(idat), w * ch
-    out = np.zeros((h, stride), np.uint8)
-    prev = np.zeros(stride, np.int32)
-    for y in range(h):
-        f = raw[y * (stride + 1)]
-        line = np.frombuffer(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)], np.uint8).astype(np.int32).copy()
-        if f == 1:                                   # sub
-            for x in range(ch, stride):
-                line[x] = (line[x] + line[x - ch]) & 255
-        elif f == 2:                                 # up
-            line = (line + prev) & 255
-        elif f == 3:                                 # average
-            for x in range(stride):
-                left = line[x - ch] if x >= ch else 0
-                line[x] = (line[x] + ((left + prev[x]) >> 1)) & 255
-        elif f == 4:                                 # paeth
-            for x in range(stride):
-                a = int(line[x - ch]) if x >= ch else 0
-                b, c = int(prev[x]), int(prev[x - ch]) if x >= ch else 0
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        prev = line
-        out[y] = line.astype(np.uint8)
-
-    px = out.reshape(h, w, ch)
-    if ctype == 3:                                   # palette
-        idx = px[:, :, 0]
-        rgb = plte[idx]
-        alpha = (trns[idx] if trns is not None and len(trns) > int(idx.max())
-                 else np.full((h, w), 255, np.uint8))
-        return np.dstack([rgb, alpha])
-    if ctype == 0:
-        return np.dstack([px[:, :, 0]] * 3 + [np.full((h, w), 255, np.uint8)])
-    if ctype == 4:
-        return np.dstack([px[:, :, 0]] * 3 + [px[:, :, 1]])
-    if ctype == 2:
-        return np.dstack([px, np.full((h, w), 255, np.uint8)])
-    return px
 
 
 def knockout_white(rgba, tol):
