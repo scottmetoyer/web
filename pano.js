@@ -34,8 +34,6 @@
   const editMode   = flag("edit", false);   // ?edit=1 turns on the room editor
   const FOV_MIN    = 25, FOV_MAX = 110;
   const PITCH_MAX  = 85 * Math.PI / 180;   // never quite reach the poles
-  const DRIFT_RATE = 0.9 * Math.PI / 180;  // idle auto-rotate, degrees/sec
-  const IDLE_AFTER = 5000;                 // ms of stillness before drifting
   const FRICTION   = 0.90;                 // per-frame inertia decay
   const DEG        = 180 / Math.PI;
 
@@ -45,7 +43,6 @@
     fov:   Math.min(FOV_MAX, Math.max(FOV_MIN, num("fov", 78))) / DEG,
     vYaw: 0, vPitch: 0,
     dither: flag("dither", false),
-    drift:  flag("drift", true),
   };
 
   // ---------------------------------------------------------------------
@@ -574,8 +571,6 @@
   // ---------------------------------------------------------------------
   // Interaction
   // ---------------------------------------------------------------------
-  let lastInput = performance.now();
-  const touched = () => { lastInput = performance.now(); };
 
   const pointers = new Map();
   let pinchDist = 0;
@@ -590,7 +585,6 @@
     stage.classList.add("dragging");
     view.vYaw = view.vPitch = 0;
     dragDist = 0;
-    touched();
     hint.classList.add("hidden");
   });
 
@@ -609,7 +603,6 @@
       const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       if (pinchDist > 0 && d > 0) zoom(Math.log(pinchDist / d) * 1.4);
       pinchDist = d;
-      touched();
       return;
     }
 
@@ -627,7 +620,6 @@
     view.vYaw = view.vYaw * 0.4 + stepYaw * 0.6;
     view.vPitch = view.vPitch * 0.4 + stepPitch * 0.6;
     lastMove = performance.now();
-    touched();
   });
 
   const release = (e) => {
@@ -638,7 +630,6 @@
       // Holding still before letting go means "stop here", not "fling".
       if (performance.now() - lastMove > 80) view.vYaw = view.vPitch = 0;
     }
-    touched();
   };
   addEventListener("pointerup", release);
   addEventListener("pointercancel", release);
@@ -647,7 +638,6 @@
   stage.addEventListener("wheel", (e) => {
     e.preventDefault();
     zoom(e.deltaY * (e.deltaMode === 1 ? 0.03 : 0.0012));
-    touched();
   }, { passive: false });
 
   function zoom(delta) {
@@ -677,7 +667,6 @@
         view.pitch = num("pitch", 0) / DEG;
         view.fov = Math.min(FOV_MAX, Math.max(FOV_MIN, num("fov", 78))) / DEG;
         break;
-      case " ": view.drift = !view.drift; break;
       case "f": case "F":
         if (document.fullscreenElement) document.exitFullscreen();
         else document.documentElement.requestFullscreen?.();
@@ -685,7 +674,6 @@
       default: return;
     }
     e.preventDefault();
-    touched();
   });
 
   // Drop any equirectangular photo onto the page to view it.
@@ -724,14 +712,12 @@
   let lastReadout = "";
   let prev = performance.now();
 
-  // While the tab is backgrounded, requestAnimationFrame pauses but lastInput
-  // stays frozen — so returning after more than IDLE_AFTER would satisfy the
-  // idle test immediately and the view would already be drifting when you look
-  // back. Treat becoming visible as fresh activity: reset the idle clock, reset
-  // the frame timer so the first dt isn't a lurch, and stop any coasting.
+  // requestAnimationFrame pauses while the tab is backgrounded. Treat coming
+  // back as a fresh start: reset the frame timer so the first dt isn't a lurch,
+  // and drop any inertia left over from before you switched away.
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
-    lastInput = prev = performance.now();
+    prev = performance.now();
     view.vYaw = view.vPitch = 0;
   });
 
@@ -741,7 +727,7 @@
     resize();
 
     if (pointers.size === 0) {
-      // Inertia, then a slow drift once things have been still for a while.
+      // Coast to a stop after a flick.
       view.yaw += view.vYaw;
       view.pitch = clampPitch(view.pitch + view.vPitch);
       const decay = Math.pow(FRICTION, dt * 60);
@@ -749,10 +735,6 @@
       view.vPitch *= decay;
       if (Math.abs(view.vYaw) < 1e-5) view.vYaw = 0;
       if (Math.abs(view.vPitch) < 1e-5) view.vPitch = 0;
-
-      if (view.drift && !document.hidden && view.vYaw === 0 && now - lastInput > IDLE_AFTER) {
-        view.yaw += DRIFT_RATE * dt;
-      }
     }
 
     gl.uniform2f(U.res, vw, vh);
@@ -791,7 +773,6 @@
 
   function initEditor() {
     document.body.classList.add("editing");
-    view.drift = false;                      // no idle drift while authoring
 
     const baseName = (s) => (s || "").split("/").pop();
     const esc = (s) => (s || "").replace(/[&<>"]/g, (c) =>

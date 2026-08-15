@@ -180,11 +180,12 @@ non-power-of-two textures; on WebGL1 the image is rescaled to a power of two
 first. Oversized photos are downscaled to the GPU's `MAX_TEXTURE_SIZE`.
 
 **Controls:** drag to look, scroll/pinch to zoom, arrows to nudge; `f`
-fullscreen, `d` 1-bit Bayer dither, `r` reset, space toggles the idle drift.
+fullscreen, `d` 1-bit Bayer dither, `r` reset. The view holds still when you
+stop touching it — there is no idle auto-pan (removed 2026-08-14).
 **Drag any 360 photo onto the page** to view it — the fastest way to check a
 new image.
 
-**Query params:** `?img=images/foo.jpg&yaw=90&pitch=-10&fov=60&dither=1&drift=0`.
+**Query params:** `?img=images/foo.jpg&yaw=90&pitch=-10&fov=60&dither=1`.
 `yaw`/`pitch`/`fov` make specific views linkable, and are how the viewer gets
 regression-tested with headless screenshots (see below).
 
@@ -207,7 +208,7 @@ and check the right thing is centered:
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
       --headless=new --disable-gpu --enable-unsafe-swiftshader \
       --window-size=900,560 --virtual-time-budget=6000 \
-      --screenshot=out.png "http://localhost:8777/?yaw=90&drift=0"
+      --screenshot=out.png "http://localhost:8777/?yaw=90"
 
 In `pano-hub.png` the cardinal markers are N=Snake Mountain, E=yellow post,
 S=green post, W=blue post, so a screenshot immediately shows whether
