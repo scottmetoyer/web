@@ -19,6 +19,11 @@
      the figure's feet; data-height is its size in degrees of view. The
      <template> holds whatever the dialog should show. -->
 <div id="props">
+  <!-- Scenery: no <template>, so it is painted into the world but can't be
+       clicked. First in the list, so anything else stands in front of it. -->
+  <div class="prop" data-src="images/sprite-snake-mountain.webp" data-alt=""
+       data-yaw="0" data-pitch="-9" data-height="30"></div>
+
   <button class="prop" data-src="images/sprite-suit.png" data-alt="A man in a suit"
           data-yaw="24" data-pitch="-20" data-height="34">
     <template>

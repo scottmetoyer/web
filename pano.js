@@ -369,9 +369,20 @@
     const img = el("img", { src: node.dataset.src, alt: node.dataset.alt || "",
                             draggable: false });
     node.prepend(img);                 // the <template> stays for the dialog
-    node.setAttribute("type", "button");
+    // A prop with no <template> has no dialog to open, so it is scenery: it is
+    // painted into the world exactly like a prop but can't be clicked or
+    // focused. That is how a landmark stays sharp at any zoom without
+    // pretending to be interactive — baking it into the panorama would cap it
+    // at the panorama's resolution instead.
+    const scenery = !node.querySelector("template");
+    if (scenery) {
+      node.classList.add("scenery");
+      node.setAttribute("aria-hidden", "true");
+    } else {
+      node.setAttribute("type", "button");
+    }
     const p = {
-      node, img,
+      node, img, scenery,
       lon: (parseFloat(node.dataset.yaw) || 0) / DEG,
       lat: (parseFloat(node.dataset.pitch) || 0) / DEG,
       heightDeg: parseFloat(node.dataset.height) || 30,   // angular height
@@ -484,8 +495,10 @@
       if (show !== p.visible) {
         p.visible = show;
         p.node.style.visibility = show ? "visible" : "hidden";
-        if (show) p.node.removeAttribute("tabindex");
-        else p.node.setAttribute("tabindex", "-1");
+        if (!p.scenery) {              // scenery is never in the tab order anyway
+          if (show) p.node.removeAttribute("tabindex");
+          else p.node.setAttribute("tabindex", "-1");
+        }
       }
       if (show) {
         if (Math.abs(ph - p.lastH) > 0.5) {
@@ -903,16 +916,35 @@
           item.heightDeg = parseFloat(size.value);
           item.node.dataset.height = size.value;
         });
-        // Raw dialog markup — HTML and <script> are kept verbatim and run when
-        // the dialog opens. This is your own content, so nothing is escaped.
-        const tpl = item.node.querySelector("template");
-        const htmlField = el("textarea", { className: "ed-code", rows: "7",
-          spellcheck: false, value: tpl ? tpl.innerHTML.trim() : "" });
-        htmlField.addEventListener("input", () => { tpl.innerHTML = htmlField.value; });
-        const preview = el("button", { className: "ed-preview", type: "button" }, "preview dialog");
-        preview.addEventListener("click", () => openProp(item));
-        panel.append(el("h3", {}, "Prop"), field("size (°)", size),
-                     field("dialog html", htmlField), preview);
+        if (item.scenery) {
+          // Scenery has no <template> and so no dialog. Giving it one is
+          // precisely what turns it back into a clickable prop, here and on
+          // save — so that is the offer, rather than a dead text box.
+          const add = el("button", { className: "ed-preview", type: "button" },
+                         "give it a dialog");
+          add.addEventListener("click", () => {
+            item.node.append(el("template", {}));
+            item.scenery = false;
+            item.node.classList.remove("scenery");
+            item.node.removeAttribute("aria-hidden");
+            item.node.setAttribute("type", "button");
+            select(item);                    // redraw the panel as a prop
+          });
+          panel.append(el("h3", {}, "Scenery"), field("size (°)", size),
+                       el("p", { className: "ed-note" },
+                          "Painted into the world; not clickable."), add);
+        } else {
+          // Raw dialog markup — HTML and <script> are kept verbatim and run when
+          // the dialog opens. This is your own content, so nothing is escaped.
+          const tpl = item.node.querySelector("template");
+          const htmlField = el("textarea", { className: "ed-code", rows: "7",
+            spellcheck: false, value: tpl.innerHTML.trim() });
+          htmlField.addEventListener("input", () => { tpl.innerHTML = htmlField.value; });
+          const preview = el("button", { className: "ed-preview", type: "button" }, "preview dialog");
+          preview.addEventListener("click", () => openProp(item));
+          panel.append(el("h3", {}, "Prop"), field("size (°)", size),
+                       field("dialog html", htmlField), preview);
+        }
       } else {
         const label = el("input", { type: "text", value: item.label || "Exit" });
         label.addEventListener("input", () => {
@@ -999,12 +1031,18 @@
         `  <a class="hotspot" href="${esc(h.node.getAttribute("href") || "#")}" ` +
         `data-yaw="${roundTo(h.lon * DEG)}" data-pitch="${roundTo(h.lat * DEG)}">` +
         `${esc(h.label || "Exit")}</a>`).join("\n");
-      const propsOut = props.map((p) =>
-        `  <button class="prop" data-src="${esc(p.exportSrc || p.node.dataset.src)}" ` +
-        `data-alt="${esc(p.alt || p.title || "")}"\n` +
-        `          data-yaw="${roundTo(p.lon * DEG)}" data-pitch="${roundTo(p.lat * DEG)}" ` +
-        `data-height="${p.heightDeg.toFixed(0)}">\n` +
-        `    <template>\n      ${propTemplate(p)}\n    </template>\n  </button>`).join("\n");
+      const propsOut = props.map((p) => {
+        const attrs = `data-src="${esc(p.exportSrc || p.node.dataset.src)}" ` +
+          `data-alt="${esc(p.alt || p.title || "")}"\n` +
+          `          data-yaw="${roundTo(p.lon * DEG)}" data-pitch="${roundTo(p.lat * DEG)}" ` +
+          `data-height="${p.heightDeg.toFixed(0)}"`;
+        // Scenery has no dialog, so it exports as a plain div — write a
+        // <template> back in and it becomes a clickable prop again.
+        return p.scenery
+          ? `  <div class="prop" ${attrs}></div>`
+          : `  <button class="prop" ${attrs}>\n` +
+            `    <template>\n      ${propTemplate(p)}\n    </template>\n  </button>`;
+      }).join("\n");
       return `<!DOCTYPE html>
 <html lang="en">
 <head>

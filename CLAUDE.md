@@ -17,7 +17,6 @@ clicking hotspots painted into the space.
 - `editor.html` — the room editor (see below). Not part of the site graph.
 - `images/pano-*.png` — one panorama per room. Placeholders for now.
 - `images/sprite-*.png` — transparent prop images (see Props below).
-- `images/bake-*.png` — cutouts baked into a panorama (see Baking below).
 - `images/CREDITS.md` — where non-generated art came from, and its license.
 - `make_panos.py` — regenerates those placeholder panoramas.
 - `make_sprites.py` — regenerates the placeholder prop sprites.
@@ -116,17 +115,40 @@ world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
   as you zoomed in — fixed 2026-08-13. If you touch the sizing, check it against
   the painted-in posts of `pano-hub.png`, which scale with the background by
   construction.
-- `data-src` is a transparent PNG, cropped tight to its alpha so the bottom edge
-  really is the figure's feet. `make_sprites.py` generates placeholder sprites
-  procedurally; real art goes in `images/` the same way (see `images/CREDITS.md`
-  for where the non-generated sprites came from). The `<template>` holds the
-  dialog content and is cloned into one shared native `<dialog>` on click.
+- `data-src` is a transparent image, cropped tight to its alpha so the bottom
+  edge really is the figure's feet. `make_sprites.py` generates placeholder
+  sprites procedurally; real art goes in `images/` the same way (see
+  `images/CREDITS.md` for where it came from). **Photographs want WebP, not
+  PNG** — Snake Mountain is 926KB as a PNG and 156KB as `cwebp -q 90
+  -alpha_q 100`, same picture, lossless alpha. The `<template>` holds the dialog
+  content and is cloned into one shared native `<dialog>` on click.
 
 Like hotspots, props are projected every frame and a drag that starts on one is
 a look, not a click. Off-screen props are simply hidden (an object needs no
 wayfinding). The dialog is a native `<dialog>` — Esc, backdrop-click and focus
 trapping come for free, and focus returns to the prop on close. Without
 JavaScript the buttons stay hidden rather than rendering broken.
+
+### Scenery: a prop with no dialog
+
+**Leave out the `<template>` and the prop becomes scenery** — painted into the
+world exactly like a prop, but not clickable, not focusable, no hover lift, and
+transparent to drags. Use a `<div>` rather than a `<button>`, since there is
+nothing to press:
+
+```html
+<div class="prop" data-src="images/sprite-snake-mountain.webp" data-alt=""
+     data-yaw="0" data-pitch="-9" data-height="30"></div>
+```
+
+That is how a landmark stays sharp at any zoom without pretending to be
+interactive — the alternative, baking it into the panorama, caps it at the
+panorama's resolution (see Baking below). Props stack in DOM order, so put
+scenery first and everything else stands in front of it.
+
+The editor understands scenery: selecting it shows a **Scenery** panel with a
+"give it a dialog" button, which is exactly the conversion back to a real prop,
+and saving writes it out as a `<div>` again.
 
 ## Populating the world (`add_prop.py`)
 
@@ -246,9 +268,7 @@ horizon, not a thing you click. Those get **baked** into the sphere by
 `make_panos.py`, listed in `BAKED` by room:
 
 ```python
-BAKED = {
-    "hub": [("images/bake-snake-mountain.png", 0.0, -9.0, 30.0)],   # due north
-}
+BAKED = {"hub": [("images/bake-ridgeline.png", 0.0, -9.0, 30.0)]}   # due north
 ```
 
 The angles read like a prop's: yaw/pitch aim at the bottom-centre where it meets
@@ -257,18 +277,30 @@ cutout as a plane tangent to the sphere facing the middle of it — the same
 geometry the viewer uses to project a prop — so it looks undistorted head on and
 curves into the equirectangular grid the way the rest of the scene does.
 Sampling is premultiplied, or the transparent surround bleeds a pale fringe into
-every edge, and the cutout is area-downsampled to its footprint first, because
-dropping a 900px photo straight into a ~170px-wide patch of sphere aliases
-badly.
+every edge, and the cutout is area-downsampled to its footprint first.
 
-**Baked vs. prop.** Baked art costs nothing at runtime and cannot drift out of
-scale, but it is stuck at the panorama's resolution — soft if you zoom right in
-— and it can't be clicked. A prop stays sharp at any zoom and opens a dialog.
-Landmark → bake; anything you interact with → prop (`add_prop.py`).
+Baking happens at generate time, so keep the source in `images/bake-*.png` and
+let `./make_panos.py hub` redo it — editing `pano-hub.png` by hand would be
+silently undone the next time anyone regenerates.
 
-Keep the source cutout in `images/bake-*.png`: baking happens at generate time,
-so `./make_panos.py hub` must be able to redo it. Editing `pano-hub.png` by hand
-would be silently undone the next time anyone regenerates.
+**`BAKED` is empty right now, and that is the interesting part.** Snake Mountain
+started baked and moved out to a scenery sprite, because baking caps art at the
+panorama's resolution:
+
+| where it lives | pixels it gets | on a 1440px screen at 30° fov |
+| --- | --- | --- |
+| baked, 2048px panorama | 170 × 171 | 8.4× upscale — mush |
+| baked, 4096px panorama | 339 × 341 | 4.2× upscale |
+| a sprite | the source image | 1.8× upscale — sharp |
+
+A 30°-wide object only ever gets 1/12 of the panorama's width. Holding 800px of
+detail on it would need a 9600×4800 panorama — 46 megapixels — so raising the
+resolution doesn't rescue it. Measured on Snake Mountain, going from baked to a
+sprite gave **3.4× more edge detail** at 32° fov.
+
+So: **bake only what is genuinely distant or low-detail** — a ridgeline, a moon,
+a smudge on the horizon — where a couple of hundred pixels is all it deserves
+anyway. Anything you can walk up to and look at should be a sprite.
 
 ## Legacy: the Decker deck
 

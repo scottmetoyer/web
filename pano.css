@@ -131,6 +131,13 @@ body.leaving #stage { opacity: 0; transition-duration: .25s; }
 .prop:focus-visible { outline: none; }
 .prop template { display: none; }
 
+/* Scenery: a prop with no dialog. Part of the view, so it must not invite a
+   click, light up on hover, or eat drags meant for looking around. */
+.prop.scenery { pointer-events: none; cursor: default; }
+.prop.scenery img { filter: none; transition: none; }
+.prop.scenery:hover img { filter: none; transform: none; }
+body.editing .prop.scenery { pointer-events: auto; }   /* still editable */
+
 /* --- prop dialog ------------------------------------------------------- */
 #prop-dialog {
   margin: auto; padding: 0; border: 0; background: transparent;
@@ -308,6 +315,7 @@ body.editing .hotspot.selected .ring { box-shadow: 0 0 0 3px #7fd0ff; }
   color: #8d8a82;
 }
 .ed-field { display: block; margin-bottom: 10px; }
+.ed-note { margin: 0 0 10px; opacity: .6; font-size: 12px; line-height: 1.4; }
 .ed-field span {
   display: block; margin-bottom: 4px; font-size: 10px;
   letter-spacing: .1em; text-transform: uppercase; color: #8d8a82;

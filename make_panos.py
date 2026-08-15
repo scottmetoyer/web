@@ -106,8 +106,8 @@ def hub():
     img = np.where((dy > 0.0)[..., None], sky, ground)
 
     # Cardinal posts, so orientation stays unambiguous while testing. North has
-    # no post any more — Snake Mountain is baked in there instead (see BAKED),
-    # and it marks north far better than a striped pole did.
+    # no post any more — Snake Mountain stands there instead (a scenery prop in
+    # index.html), and it marks north far better than a striped pole did.
     lon_deg, lat_deg = np.degrees(lon) % 360.0, np.degrees(lat)
     for m_lon, color in [(90.0, (240, 190, 70)),
                          (180.0, (110, 200, 130)), (270.0, (100, 150, 235))]:
@@ -232,9 +232,12 @@ SCENES = {"hub": hub, "void": void, "hall": hall}
 # panorama, so it costs nothing at runtime and can't drift out of scale.
 # Angles match a prop's: yaw/pitch aim at the bottom-centre where it meets the
 # ground, height is its angular height in degrees.
-BAKED = {
-    "hub": [("images/bake-snake-mountain.png", 0.0, -9.0, 30.0)],   # due north
-}
+# Nothing is baked right now: Snake Mountain started here and moved out to a
+# scenery prop, because baking caps art at the panorama's resolution — a 30°
+# object only ever gets 1/12 of the width (170px at 2048) and turns to mush the
+# moment you zoom. Bake things that are genuinely distant or low-detail — a
+# ridgeline, a moon — and use a sprite for anything you can walk up to.
+BAKED = {}
 
 
 def _box_down(arr, n_out, axis):

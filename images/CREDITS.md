@@ -14,7 +14,7 @@ Processed for use as a prop: rendered from the source SVG at 1200px tall
 (`rsvg-convert -h 1200`), then cropped to its alpha bounding box → 332×1172, so
 the bottom edge is the figure's feet and the prop anchor lands on the ground.
 
-## `bake-snake-mountain.png`
+## `sprite-snake-mountain.webp`
 
 Product photograph of the Icon Heroes *Snake Mountain* statue (Masters of the
 Universe) — https://www.iconheroes.com/, source image `6345568_orig.jpg`.
@@ -25,4 +25,10 @@ this is a personal sketch, but it is not cleared for redistribution, so swap it
 before treating the north landmark as finished.
 
 Background knocked out (white flood-fill, tolerance 20) and cropped to alpha →
-894×900. Baked into `pano-hub.png` at yaw 0°, 30° tall, by `make_panos.py`.
+795×800, the photo's native size. Encoded `cwebp -q 90 -alpha_q 100`: 156KB,
+against 926KB as a PNG, which matters because this one is served to visitors.
+
+Stands due north in `index.html` as a scenery prop (a `.prop` with no
+`<template>`, so it is part of the view rather than something you click). It was
+briefly baked into `pano-hub.png` instead — that capped it at 170px and looked
+like mush the moment you zoomed.
