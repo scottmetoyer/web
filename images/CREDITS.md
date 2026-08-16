@@ -16,17 +16,29 @@ the bottom edge is the figure's feet and the prop anchor lands on the ground.
 
 ## `sprite-snake-mountain.webp`
 
-Product photograph of the Icon Heroes *Snake Mountain* statue (Masters of the
-Universe) — https://www.iconheroes.com/, source image `6345568_orig.jpg`.
+"6345568_orig.jpg", by *Icon Heroes (product photo); design Mattel* — https://www.iconheroes.com/cdn/shop/products/6345568_orig.jpg
 
-**Not a free license.** The photo is Icon Heroes'; the design is Mattel's. It is
-in here as placeholder art the way the procedural panoramas are — fine while
-this is a personal sketch, but it is not cleared for redistribution, so swap it
-before treating the north landmark as finished.
+License: NOT free — placeholder art, not cleared for redistribution
 
-Background knocked out (white flood-fill, tolerance 20) and cropped to alpha →
-795×800, the photo's native size. Encoded `cwebp -q 90 -alpha_q 100`: 156KB,
-against 926KB as a PNG, which matters because this one is served to visitors.
+Rendered 800px tall, denoised (3×3 median), cropped to its alpha bounding box (795×800) so the bottom edge is the sprite's anchor point, encoded WebP q90 (98KB).
+
+Rebuild it with exactly that:
+
+    ./add_prop.py cutout https://www.iconheroes.com/cdn/shop/products/6345568_orig.jpg \
+        --name snake-mountain --px 800 --knockout-white 20 --denoise --webp 90 --force
+
+The photo is Icon Heroes'; the design is Mattel's. It is here as placeholder art
+the way the procedural panoramas are — fine while this is a personal sketch, not
+cleared for redistribution, so swap it before the north landmark counts as
+finished.
+
+**800px is the ceiling.** That is the largest this photo exists at anywhere —
+the CDN returns the same file for any `?width=`, and the review galleries are
+800×450 shots on real backgrounds that can't be cut out cleanly. So the sprite
+gets magnified about 2× on a retina screen at 32° fov, which is why it is
+denoised: the source carries its own JPEG mottle and magnifying it magnifies the
+speckle too. The median drops that ~60% in the rendered frame while costing ~4%
+edge strength at the default zoom, where the two are indistinguishable.
 
 Stands due north in `index.html` as a scenery prop (a `.prop` with no
 `<template>`, so it is part of the view rather than something you click). It was

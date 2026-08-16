@@ -166,6 +166,12 @@ either way:
 
     ./add_prop.py add ~/Pictures/statue.jpg --name statue --yaw 90 --knockout-white
 
+`cutout` runs the same image pipeline but stops before the markup — for scenery,
+or anything you want to place by hand:
+
+    ./add_prop.py cutout <source> --name snake-mountain \
+        --px 800 --knockout-white 20 --denoise --webp 90
+
 - **Search defaults to Openclipart because everything there is CC0**, so nothing
   we plant carries an attribution obligation. Commons is searchable too
   (`--source commons`) but most of its usable clipart is CC BY-SA, so the
@@ -180,6 +186,21 @@ either way:
   a shirt, the whites of eyes — survives. The result is always cropped to its
   alpha bounding box, because the prop anchors at bottom-centre: transparent
   padding under the feet would leave the thing hovering.
+- **`--denoise` for photographs.** Stock photos carry their own JPEG mottle, and
+  a sprite gets magnified — a 30° object on a retina screen at 32° fov is drawn
+  at roughly 2× its source size, which magnifies the speckle right along with
+  the picture. That is what "grainy when I zoom" turns out to be, and no amount
+  of re-encoding fixes it, because the grain is in the source. A 3×3 median
+  drops the speckle ~60% in the rendered frame while costing ~4% of edge
+  strength at the default zoom, where the two are indistinguishable. Don't
+  bother for flat vector art — there is no mottle to remove.
+- **`--webp` for photographs too.** Snake Mountain is 926KB as a PNG and 98KB as
+  WebP q90, same picture, lossless alpha. Needs `cwebp` (`brew install webp`);
+  without it the PNG is kept and it says so.
+- Things that sound like they should help and don't: pre-upscaling the sprite 2×
+  so the browser draws it near 1:1 measured no better than plain denoising and
+  cost 2.3× the bytes; unsharp masking after denoising just trades the speckle
+  straight back.
 - **Re-running `add` with `--force` replaces the prop in place**, which is how
   you nudge yaw/pitch/height — but it overwrites hand-edited dialog HTML.
   Without `--force` it refuses rather than planting a duplicate.

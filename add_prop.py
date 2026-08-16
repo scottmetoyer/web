@@ -239,6 +239,37 @@ def knockout_white(rgba, tol):
     return out
 
 
+def denoise(rgba):
+    """3×3 median over the colour channels.
+
+    Stock photos carry their own JPEG mottle, and a sprite gets magnified — a
+    30° object on a retina screen at 32° fov is drawn about 2× its source size,
+    which magnifies that speckle right along with the picture. A median knocks
+    the speckle down (~60%) while keeping edges far better than a blur would,
+    and at the default zoom the difference is invisible (~4% softer).
+    """
+    rgb = rgba[:, :, :3]
+    p = np.pad(rgb, ((1, 1), (1, 1), (0, 0)), mode="edge")
+    stack = np.stack([p[i:i + rgb.shape[0], j:j + rgb.shape[1]]
+                      for i in range(3) for j in range(3)])
+    out = rgba.copy()
+    out[:, :, :3] = np.median(stack, axis=0).astype(np.uint8)
+    return out
+
+
+def encode_webp(png_path, quality):
+    """Photographs are enormous as PNG. WebP keeps alpha and is ~6x smaller."""
+    if not shutil.which("cwebp"):
+        print("  ! cwebp not installed (brew install webp) — keeping the PNG")
+        return png_path
+    out = os.path.splitext(png_path)[0] + ".webp"
+    run(["cwebp", "-quiet", "-q", str(quality), "-alpha_q", "100", png_path, "-o", out])
+    os.remove(png_path)
+    print(f"  encoded {os.path.basename(out)} "
+          f"({os.path.getsize(out) // 1024}KB, q{quality})")
+    return out
+
+
 def crop_to_alpha(rgba):
     ys, xs = np.where(rgba[:, :, 3] > 8)
     if not len(ys):
@@ -301,11 +332,13 @@ def record_credit(name, credit, note):
     path = os.path.join(ROOT, "images", "CREDITS.md")
     head = "# Image credits\n\nWhere the art in this folder came from. Generated placeholders\n(`make_panos.py`, `make_sprites.py`) are not listed — they are ours.\n"
     body = open(path).read() if os.path.exists(path) else head
-    entry = (f"\n## `sprite-{name}.png`\n\n"
+    entry = (f"\n## `sprite-{name}`\n\n"
              f"\"{credit['title']}\", by *{credit['author']}* — {credit['page']}\n\n"
              f"License: {credit['license']}\n\n{note}\n")
     # Re-adding a sprite replaces its credit rather than stacking a second one.
-    existing = re.search(rf"\n## `sprite-{re.escape(name)}\.png`\n.*?(?=\n## |\Z)", body, re.S)
+    # Matched without the extension, so re-encoding png→webp updates in place.
+    stem = re.escape(os.path.splitext(name)[0])
+    existing = re.search(rf"\n## `sprite-{stem}(?:\.\w+)?`\n.*?(?=\n## |\Z)", body, re.S)
     body = body.replace(existing.group(0), "") if existing else body
     open(path, "w").write(body.rstrip("\n") + "\n" + entry)
     print("  credited in images/CREDITS.md")
@@ -333,13 +366,17 @@ def cmd_search(a):
                 print(f"  {tag}: skipped ({exc})")
 
 
-def cmd_add(a):
+def build_sprite(a):
+    """source → a finished images/sprite-<name>.(png|webp). Shared by add/cutout."""
     print(f"fetching {a.source}")
     data, suffix, credit = resolve(a.source)
     credit.update({k: v for k, v in
                    (("author", a.author), ("license", a.license)) if v})
     rgba = rasterise(data, suffix, a.px)
     print(f"  rasterised {rgba.shape[1]}x{rgba.shape[0]}")
+    if a.denoise:
+        rgba = denoise(rgba)
+        print("  denoised (3×3 median)")
     if a.knockout_white is not None:
         rgba = knockout_white(rgba, a.knockout_white)
     if not a.no_crop:
@@ -348,21 +385,47 @@ def cmd_add(a):
     if (rgba[:, :, 3] > 8).all():
         print("  ! no transparency — this will render as a rectangle."
               " Try --knockout-white, or find an SVG/PNG cutout.")
-    out = os.path.join(ROOT, "images", f"sprite-{a.name}.png")
-    if os.path.exists(out) and not a.force:
-        sys.exit(f"images/sprite-{a.name}.png exists (use --force)")
-    write_png_rgba(out, rgba)
-    print(f"  wrote images/sprite-{a.name}.png")
-    record_credit(a.name, credit,
-                  f"Rendered {a.px}px tall, then cropped to its alpha bounding box "
-                  f"({rgba.shape[1]}×{rgba.shape[0]}) so the bottom edge is the "
-                  f"prop's anchor point.")
+    png = os.path.join(ROOT, "images", f"sprite-{a.name}.png")
+    final = os.path.splitext(png)[0] + (".webp" if a.webp else ".png")
+    if os.path.exists(final) and not a.force:
+        sys.exit(f"{os.path.relpath(final, ROOT)} exists (use --force)")
+    write_png_rgba(png, rgba)
+    final = encode_webp(png, a.webp) if a.webp else png
+    print(f"  wrote images/{os.path.basename(final)}")
+    name = os.path.basename(final)
+    record_credit(name[len("sprite-"):], credit,
+                  f"Rendered {a.px}px tall{', denoised (3×3 median)' if a.denoise else ''}, "
+                  f"cropped to its alpha bounding box ({rgba.shape[1]}×{rgba.shape[0]}) so the "
+                  f"bottom edge is the sprite's anchor point, "
+                  f"{f'encoded WebP q{a.webp}' if a.webp else 'kept as PNG'} "
+                  f"({os.path.getsize(final) // 1024}KB).")
+    return name
+
+
+def cmd_add(a):
+    a.filename = build_sprite(a)
     snippet = prop_html(a)
     if a.no_wire:
         print("\n" + snippet)
     else:
         wire_into_room(a.room, a.name, snippet, a.force)
-    print(f"\nlook at it:  {a.room}?yaw={a.yaw:g}&pitch={a.pitch:g}&drift=0")
+    print(f"\nlook at it:  {a.room}?yaw={a.yaw:g}&pitch={a.pitch:g}")
+
+
+def cmd_cutout(a):
+    """Just the image — for scenery, or anything you'll place by hand."""
+    name = build_sprite(a)
+    print(f"\nplace it with a scenery div (no <template> = not clickable):\n")
+    print(f'  <div class="prop" data-src="images/{name}" data-alt=""\n'
+          f'       data-yaw="0" data-pitch="-9" data-height="30"></div>')
+
+
+def add_image_flags(p):
+    """Flags that shape the image itself, shared by `add` and `cutout`."""
+    p.add_argument("--denoise", action="store_true",
+                   help="3×3 median — kills the JPEG mottle in stock photos")
+    p.add_argument("--webp", nargs="?", type=int, const=90, default=None,
+                   metavar="Q", help="encode WebP instead of PNG (photos: yes)")
 
 
 def main(argv):
@@ -399,7 +462,22 @@ def main(argv):
     d.add_argument("--no-crop", action="store_true")
     d.add_argument("--no-wire", action="store_true", help="just print the snippet")
     d.add_argument("--force", action="store_true", help="overwrite an existing sprite")
+    add_image_flags(d)
     d.set_defaults(fn=cmd_add)
+
+    # Same image pipeline, no prop markup — for scenery and hand-placed art.
+    c = sub.add_parser("cutout", help="just make the sprite image")
+    c.add_argument("source", help="oc:ID | commons:File:… | URL | local path")
+    c.add_argument("--name", required=True, help="sprite-<name>.<ext>")
+    c.add_argument("--px", type=int, default=1200, help="raster height before cropping")
+    c.add_argument("--author")
+    c.add_argument("--license")
+    c.add_argument("--knockout-white", nargs="?", type=int, const=12, default=None,
+                   metavar="TOL", help="flood-fill a white background to transparent")
+    c.add_argument("--no-crop", action="store_true")
+    c.add_argument("--force", action="store_true")
+    add_image_flags(c)
+    c.set_defaults(fn=cmd_cutout)
 
     a = p.parse_args(argv)
     if getattr(a, "body_file", None):
