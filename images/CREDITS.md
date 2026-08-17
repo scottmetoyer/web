@@ -44,3 +44,11 @@ Stands due north in `index.html` as a scenery prop (a `.prop` with no
 `<template>`, so it is part of the view rather than something you click). It was
 briefly baked into `pano-hub.png` instead — that capped it at 170px and looked
 like mush the moment you zoomed.
+
+## `sprite-pc.webp`
+
+"Desktop Computer (#10)", by *oksmith* — https://openclipart.org/detail/325360/desktopcomputer
+
+License: Public domain (CC0 1.0)
+
+Rendered 1200px tall, cropped to its alpha bounding box (1155×1200) so the bottom edge is the sprite's anchor point, encoded WebP lossless (25KB).

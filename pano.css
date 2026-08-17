@@ -147,6 +147,18 @@ body.editing .prop.scenery { pointer-events: auto; }   /* still editable */
   background: rgba(5, 6, 10, .62);
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
+/* A prop that frames a whole site needs more room than one holding a
+   paragraph, so the dialog widens only when its content is an iframe.
+   This sets `width`, not just `max-width`: a <dialog> is width:fit-content, and
+   an iframe's `width:100%` against a shrink-wrapping parent has nothing
+   definite to resolve against, so it collapses to its intrinsic 300px. */
+#prop-dialog:has(iframe) { width: min(96vw, 940px); max-width: min(96vw, 940px); }
+#prop-dialog iframe {
+  display: block; width: 100%; height: min(70vh, 600px);
+  border: 0; border-radius: 6px;
+  background: #0e1018;              /* the dialog's own dark, so nothing flashes
+                                       white before the framed page paints */
+}
 #prop-dialog .dialog-inner {
   position: relative;
   padding: 28px 26px 24px;

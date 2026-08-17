@@ -129,6 +129,21 @@ wayfinding). The dialog is a native `<dialog>` — Esc, backdrop-click and focus
 trapping come for free, and focus returns to the prop on close. Without
 JavaScript the buttons stay hidden rather than rendering broken.
 
+### Framing a whole site in a prop
+
+A prop's dialog is raw HTML, so an `<iframe>` in the `<template>` turns an object
+in the world into a doorway to a site — the old PC on the plain opens
+twistypassages.net. The dialog widens from its usual 460px to 940px whenever its
+content contains an iframe (`#prop-dialog:has(iframe)`), and that rule sets
+`width`, not just `max-width`, on purpose: a `<dialog>` is `width: fit-content`,
+so an iframe's `width: 100%` has no definite containing block to resolve against
+and silently collapses to its intrinsic 300px.
+
+Because it lives in a `<template>`, nothing is fetched until the prop is clicked.
+Check the target allows framing first — `curl -I` and look for
+`X-Frame-Options` or a CSP `frame-ancestors`; if either forbids it the frame just
+comes up blank, and linking out is the only option.
+
 ### Scenery: a prop with no dialog
 
 **Leave out the `<template>` and the prop becomes scenery** — painted into the
