@@ -258,15 +258,22 @@ def denoise(rgba):
 
 
 def encode_webp(png_path, quality):
-    """Photographs are enormous as PNG. WebP keeps alpha and is ~6x smaller."""
+    """Photographs are enormous as PNG. WebP keeps alpha and is far smaller.
+
+    `--webp 100` means lossless, which is the right choice for flat vector art:
+    it beats our PNG about 3:1 and adds no ringing along the hard edges that
+    lossy would. Photographs want a real quality instead — q90 is ~6x smaller
+    than PNG and lossless would barely help.
+    """
     if not shutil.which("cwebp"):
         print("  ! cwebp not installed (brew install webp) — keeping the PNG")
         return png_path
     out = os.path.splitext(png_path)[0] + ".webp"
-    run(["cwebp", "-quiet", "-q", str(quality), "-alpha_q", "100", png_path, "-o", out])
+    mode = ["-lossless"] if quality >= 100 else ["-q", str(quality)]
+    run(["cwebp", "-quiet", *mode, "-alpha_q", "100", png_path, "-o", out])
     os.remove(png_path)
-    print(f"  encoded {os.path.basename(out)} "
-          f"({os.path.getsize(out) // 1024}KB, q{quality})")
+    print(f"  encoded {os.path.basename(out)} ({os.path.getsize(out) // 1024}KB, "
+          f"{'lossless' if quality >= 100 else f'q{quality}'})")
     return out
 
 
@@ -279,7 +286,7 @@ def crop_to_alpha(rgba):
 
 # --- wiring -----------------------------------------------------------------
 
-PROP = '''  <button class="prop" data-src="images/sprite-{name}.png" data-alt="{alt}"
+PROP = '''  <button class="prop" data-src="images/{file}" data-alt="{alt}"
           data-yaw="{yaw:g}" data-pitch="{pitch:g}" data-height="{height:g}"{anchor}>
     <template>
       <h2>{title}</h2>
@@ -290,8 +297,10 @@ PROP = '''  <button class="prop" data-src="images/sprite-{name}.png" data-alt="{
 
 
 def prop_html(a):
+    # The filename, not the name — the extension depends on how it was encoded.
     return PROP.format(
-        name=a.name, alt=html.escape(a.alt or a.name), yaw=a.yaw, pitch=a.pitch,
+        file=getattr(a, "filename", f"sprite-{a.name}.png"),
+        alt=html.escape(a.alt or a.name), yaw=a.yaw, pitch=a.pitch,
         height=a.height, title=html.escape(a.title or a.name),
         anchor='' if a.anchor == "bottom" else f' data-anchor="{a.anchor}"',
         body=a.body or "<p>Nothing to say yet.</p>")
@@ -305,7 +314,8 @@ def wire_into_room(room, name, snippet, force):
 
     # Already there? Replacing lets you re-run `add` to nudge yaw/pitch/height —
     # but it overwrites hand-edited dialog content, so it needs --force.
-    here = re.search(rf'[ \t]*<button class="prop" data-src="images/sprite-{re.escape(name)}\.png".*?</button>\n',
+    # Any extension: re-encoding png -> webp must still replace, not duplicate.
+    here = re.search(rf'[ \t]*<button class="prop" data-src="images/sprite-{re.escape(name)}\.\w+".*?</button>\n',
                      src, re.S)
     if here:
         if not force:
@@ -397,7 +407,7 @@ def build_sprite(a):
                   f"Rendered {a.px}px tall{', denoised (3×3 median)' if a.denoise else ''}, "
                   f"cropped to its alpha bounding box ({rgba.shape[1]}×{rgba.shape[0]}) so the "
                   f"bottom edge is the sprite's anchor point, "
-                  f"{f'encoded WebP q{a.webp}' if a.webp else 'kept as PNG'} "
+                  f"{('encoded WebP lossless' if a.webp >= 100 else f'encoded WebP q{a.webp}') if a.webp else 'kept as PNG'} "
                   f"({os.path.getsize(final) // 1024}KB).")
     return name
 
