@@ -21,6 +21,7 @@ clicking hotspots painted into the space.
 - `make_panos.py` — regenerates those placeholder panoramas.
 - `make_sprites.py` — regenerates the placeholder prop sprites.
 - `add_prop.py` — finds real art and plants it in a room (see below).
+- `glitch_sprite.py` — corrupts a sprite with fragments of other art (see below).
 - `deck.html`, `site.deck`, `index.deck`, `customize.py` — **legacy**, see below.
 
 ## The room editor (`editor.html`)
@@ -225,6 +226,54 @@ or anything you want to place by hand:
 For placing things by eye rather than by angle, the editor (`?edit=1`) is still
 the better tool — this is for when you know roughly where it goes and want the
 art fetched, cut out, credited and wired in one step.
+
+## Corrupting a sprite (`glitch_sprite.py`)
+
+Every prop on the plain is glitched: the man in the suit is spliced through with
+insects, the old PC erupts flowers, and Snake Mountain has bodybuilders' arms and
+legs coming out of it. All three are one operation — cut random rotated shards
+(rect / triangle / wedge / sheared bar) out of a pool of donor art and composite
+them over the base sprite.
+
+    ./glitch_sprite.py images/sprite-suit.png --name suit-glitch \
+        --donor oc:239649/dogface-butterfly --donor oc:316155/wasp \
+        --fragments 26 --seed 11 --webp 100
+
+Donors are any source `add_prop.py` accepts, and are cached rasterised under
+`/tmp/glitch-donors`, so re-rolling `--seed` after the first run is instant.
+Openclipart drops connections constantly, which is why the fetch retries eight
+times with backoff — with a pool of ten donors, one attempt each is a coin flip
+that the whole run dies.
+
+The three commands that produced what's on the plain now are recorded in
+`images/CREDITS.md`, one entry per glitched sprite, listing every donor.
+
+- **The output keeps the base's exact dimensions.** A prop anchors at its
+  bottom-centre, so padding the canvas for a shard that hangs off the edge would
+  move the figure's feet and silently shift where the prop sits in the room.
+  Overhanging shards are clipped instead, and the result is never re-cropped.
+- **Most shards are clipped to the base's own alpha**, so the silhouette still
+  reads as a man / a computer / a mountain. `--bleed` is the fraction let past
+  that outline; without some, it looks like a texture fill rather than damage.
+- **Repeating `--donor` weights the pool toward it** — the pool is sampled
+  uniformly. This matters more than any other knob: with an even pool the
+  result went muddy, because half the clipart in any search is a black
+  silhouette and black-on-black reads as a smudge, not as an insect. Weight the
+  vivid, legible pieces 2–3× and the fragments actually look like what they are.
+  (Credits dedupe the repeats.)
+- **`--region limbs`** restricts the cut to a donor's outer thirds and bottom
+  third — where a standing figure's arms and legs are. That is what makes the
+  Snake Mountain pass read as limbs rather than as another torso.
+- `--min-cover` rejects a cut that is mostly transparent, so shards hold art
+  instead of empty air; `--frag-min/--frag-max` size them as a fraction of
+  `sqrt(w*h)` of the base, so the same numbers work on a tall thin figure and a
+  square mountain.
+- Shards get a random treatment — channel separation, invert, posterize, or
+  dropped scanlines — but "plain" is weighted up three to one, since treating
+  everything turns the donor art back into noise.
+- Encode the result WebP like any other sprite. Lossless (`--webp 100`) for a
+  base that is flat vector art (the suit: 120KB PNG → 74KB), q90 for the
+  photographic ones.
 
 ## The viewer engine (`pano.js`)
 

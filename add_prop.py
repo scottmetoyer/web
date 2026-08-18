@@ -339,12 +339,15 @@ def wire_into_room(room, name, snippet, force):
 
 
 def record_credit(name, credit, note):
+    """`credit` is one source, or a list of them — a glitched sprite is made of
+    fragments of several, and they all have to be named."""
     path = os.path.join(ROOT, "images", "CREDITS.md")
     head = "# Image credits\n\nWhere the art in this folder came from. Generated placeholders\n(`make_panos.py`, `make_sprites.py`) are not listed — they are ours.\n"
     body = open(path).read() if os.path.exists(path) else head
-    entry = (f"\n## `sprite-{name}`\n\n"
-             f"\"{credit['title']}\", by *{credit['author']}* — {credit['page']}\n\n"
-             f"License: {credit['license']}\n\n{note}\n")
+    sources = "\n".join(
+        f"\"{c['title']}\", by *{c['author']}* — {c['page']}\n\nLicense: {c['license']}\n"
+        for c in (credit if isinstance(credit, list) else [credit]))
+    entry = f"\n## `sprite-{name}`\n\n{sources}\n{note}\n"
     # Re-adding a sprite replaces its credit rather than stacking a second one.
     # Matched without the extension, so re-encoding png→webp updates in place.
     stem = re.escape(os.path.splitext(name)[0])

@@ -52,3 +52,91 @@ like mush the moment you zoomed.
 License: Public domain (CC0 1.0)
 
 Rendered 1200px tall, cropped to its alpha bounding box (1155×1200) so the bottom edge is the sprite's anchor point, encoded WebP lossless (25KB).
+
+## `sprite-pc-glitch.webp`
+
+"Purple Flower with smile", by *barnheartowl* — https://openclipart.org/detail/236026/purple-daisy-with-face
+
+License: Public domain (CC0 1.0)
+
+"Sunflower", by *ihalseide* — https://openclipart.org/detail/283964/1501448000
+
+License: Public domain (CC0 1.0)
+
+"Sunflower kaleidoscope 27", by *Firkin* — https://openclipart.org/detail/259268/SunflowerKaleidoscope27
+
+License: Public domain (CC0 1.0)
+
+"Tulip", by *Eggib* — https://openclipart.org/detail/320554/tulpan2
+
+License: Public domain (CC0 1.0)
+
+"Tulip", by *Eggib* — https://openclipart.org/detail/320163/tulpan
+
+License: Public domain (CC0 1.0)
+
+"Red Flower", by *keriann3* — https://openclipart.org/detail/219765/Red-Flower-2015053159
+
+License: Public domain (CC0 1.0)
+
+"flower art svg", by *metashoip* — https://openclipart.org/detail/351216/flower-art-line-ffff
+
+License: Public domain (CC0 1.0)
+
+Fragments of the above, cut as rotated rect/tri/wedge/shear sections and layered over `sprite-pc.webp` by `glitch_sprite.py --seed 5 --fragments 26`. Same dimensions as the base, so the prop's anchor is unchanged.
+
+## `sprite-snake-mountain-glitch.webp`
+
+"Bodybuilder", by *liftarn* — https://openclipart.org/detail/322890/bodybuilder-in-thong
+
+License: Public domain (CC0 1.0)
+
+"Muscle Man Cartoon - Colour Remix", by *j4p4n* — https://openclipart.org/detail/341081/muscle-man-cartooncolour
+
+License: Public domain (CC0 1.0)
+
+"Faceless bodybuilder", by *liftarn* — https://openclipart.org/detail/322891/faceless-bodybuilder
+
+License: Public domain (CC0 1.0)
+
+"Bodybuilder", by *j4p4n* — https://openclipart.org/detail/332459/bodybuilder-pd
+
+License: Public domain (CC0 1.0)
+
+"Bodybuilder woman", by *liftarn* — https://openclipart.org/detail/341337/bodybuilder-woman
+
+License: Public domain (CC0 1.0)
+
+Fragments of the above, cut as rotated rect/tri/wedge/shear sections and layered over `sprite-snake-mountain.webp` by `glitch_sprite.py --seed 9 --fragments 28 --region limbs`. Same dimensions as the base, so the prop's anchor is unchanged.
+
+## `sprite-suit-glitch.webp`
+
+"dogface butterfly", by *jbruce* — https://openclipart.org/detail/239649/dogface-butterfly
+
+License: Public domain (CC0 1.0)
+
+"Wasp", by *oksmith* — https://openclipart.org/detail/316155/1551633495
+
+License: Public domain (CC0 1.0)
+
+"Lady Beetle - Colour Remix", by *j4p4n* — https://openclipart.org/detail/332748/lady-beetle-colour
+
+License: Public domain (CC0 1.0)
+
+"Spider 2", by *Firkin* — https://openclipart.org/detail/264582/Spider2
+
+License: Public domain (CC0 1.0)
+
+"Stag Beetle", by *j4p4n* — https://openclipart.org/detail/306625/1536852963
+
+License: Public domain (CC0 1.0)
+
+"ant - coloured", by *frankes* — https://openclipart.org/detail/214039/ameise
+
+License: Public domain (CC0 1.0)
+
+"Paper Wasp", by *algotruneman* — https://openclipart.org/detail/289379/wasp-paper
+
+License: Public domain (CC0 1.0)
+
+Fragments of the above, cut as rotated rect/tri/wedge/shear sections and layered over `sprite-suit.png` by `glitch_sprite.py --seed 11 --fragments 26`. Same dimensions as the base, so the prop's anchor is unchanged.
