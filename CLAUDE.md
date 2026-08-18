@@ -130,6 +130,19 @@ wayfinding). The dialog is a native `<dialog>` — Esc, backdrop-click and focus
 trapping come for free, and focus returns to the prop on close. Without
 JavaScript the buttons stay hidden rather than rendering broken.
 
+**A prop is culled against its own on-screen rectangle, not a fixed margin.**
+Both are screen-space, so the test is exact: it stays visible while any part of
+it overlaps the frame, and goes the moment none does. This used to be a flat
+±1.4 in NDC on the horizontal axis, which is a guess at half a sprite's width —
+and one number can't be right for every sprite, zoom and window, since a prop's
+pixel width grows as you zoom in and NDC is measured against the viewport's.
+Snake Mountain is as wide as it is tall (30°), so it popped out of existence
+below about 42° fov on a landscape window with a fifth of it still on screen —
+and below 98° fov, i.e. at any zoom you'd actually use, on a phone held
+upright. Fixed 2026-08-18. The culling needs the image's aspect ratio,
+which is read once on load; if you change how props are sized, the cull reads
+`ph` from the same projection, so it follows automatically.
+
 ### Framing a whole site in a prop
 
 A prop's dialog is raw HTML, so an `<iframe>` in the `<template>` turns an object

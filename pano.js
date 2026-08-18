@@ -36,6 +36,7 @@
   const PITCH_MAX  = 85 * Math.PI / 180;   // never quite reach the poles
   const FRICTION   = 0.90;                 // per-frame inertia decay
   const DEG        = 180 / Math.PI;
+  const EDGE       = 0.05;                 // NDC slack on the prop culling test
 
   const view = {
     yaw:   num("yaw", 0) / DEG,
@@ -389,7 +390,14 @@
       centered: node.dataset.anchor === "center",
       anchor: node.dataset.anchor === "center" ? "-50%" : "-100%",
       visible: false, lastH: 0,
+      aspect: 1,          // width/height of the art, for the culling test
     };
+    // Until the image has decoded there is no aspect to read, and a square
+    // guess is close enough for the frame or two before it lands.
+    const readAspect = () => {
+      if (img.naturalHeight) p.aspect = img.naturalWidth / img.naturalHeight;
+    };
+    if (img.complete) readAspect(); else img.addEventListener("load", readAspect);
     return p;
   }
   const props = [...document.querySelectorAll(".prop")].map(registerProp);
@@ -482,12 +490,28 @@
           : h * Math.tan(Math.min(span, Math.PI * 0.98) / 2) / v.t;
       }
 
-      // NDC half-extent of the sprite, so a tall prop stays visible while its
-      // anchor (its feet) is still just below the frame.
+      // NDC extent of the sprite around its anchor, so it stays on screen for
+      // exactly as long as any part of it is. The vertical span falls out of
+      // the projection above; the horizontal one is the same pixels through
+      // x's NDC scale, which needs the image's own aspect ratio.
+      //
+      // Culling x on a fixed margin instead — which is what this did until
+      // 2026-08-18 — pops a wide prop while it is still visibly in frame. The
+      // margin has to be half the sprite's width, and no single number is that
+      // for every sprite, zoom and window: pixel width grows as you zoom in,
+      // and NDC is measured against the viewport's. Snake Mountain (as wide as
+      // it is tall, 30°) crossed the old 0.4 margin below 42° fov landscape,
+      // and below 98° in portrait. Everything here is screen-space, so the
+      // rectangle test is exact.
       const spanY = 2 * ph / h;
+      const spanX = 2 * ph * p.aspect / w;
+      const up = p.centered ? spanY / 2 : spanY;    // how far it reaches above
+      const down = p.centered ? spanY / 2 : 0;      // the anchor, and below
       let show = anchor.front, px = 0, py = 0;
       if (show) {
-        show = Math.abs(anchor.ndcX) < 1.4 && anchor.ndcY > -1 - spanY && anchor.ndcY < 1.2;
+        show = Math.abs(anchor.ndcX) < 1 + spanX / 2 + EDGE
+            && anchor.ndcY > -1 - up - EDGE
+            && anchor.ndcY < 1 + down + EDGE;
         px = anchor.px;
         py = anchor.py;
       }
