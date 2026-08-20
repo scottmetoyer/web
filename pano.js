@@ -389,8 +389,8 @@
       heightDeg: parseFloat(node.dataset.height) || 30,   // angular height
       centered: node.dataset.anchor === "center",
       anchor: node.dataset.anchor === "center" ? "-50%" : "-100%",
-      visible: false, lastH: 0,
-      aspect: 1,          // width/height of the art, for the culling test
+      visible: false, lastH: 0, lastW: 0,
+      aspect: 1,          // width/height of the art, for sizing and culling
     };
     // Until the image has decoded there is no aspect to read, and a square
     // guess is close enough for the frame or two before it lands.
@@ -454,6 +454,8 @@
   const dirAnchor = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
   const dirFoot = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
   const dirHead = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
+  const dirLeft = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
+  const dirRight = { front: false, ndcX: 0, ndcY: 0, px: 0, py: 0 };
   const viewConst = { cy: 0, sy: 0, cp: 0, sp: 0, t: 0, aspect: 1 };
 
   // Project props the same way as hotspots, but size them by angular height so
@@ -490,7 +492,7 @@
       // any pitch, 4% for a prop 35° off-axis with the view pitched 25°, and 4x
       // out near the edge of the sphere. Vertical also puts the sprite's top
       // exactly on the projected head, which the hypotenuse never did.
-      let ph = 0;
+      let ph = 0, pw = 0;
       if (anchor.front) {
         const half = p.centered ? span / 2 : 0;   // bottom-anchored: feet == anchor
         const foot = p.centered ? projectDir(p.lat - half, p.lon, v, w, h, dirFoot) : anchor;
@@ -500,6 +502,25 @@
           // An end behind the camera has no projection; fall back to the
           // on-axis size, which is right at the centre and never absurd.
           : h * Math.tan(Math.min(span, Math.PI * 0.98) / 2) / v.t;
+
+        // Width is measured the same way, and it has to be measured, not
+        // inferred: deriving it from the height and the image's aspect assumes
+        // the projection stretches both axes alike, and it does not. At a
+        // vertical off-axis angle it stretches by sec² along the meridian but
+        // only sec across it, so a prop whose width tracks its height balloons
+        // sideways as you look up or down — Snake Mountain, 30° tall and dead
+        // ahead, came out 2.3x too wide at 60° of pitch (fixed 2026-08-20).
+        // Stretching the sprite is right, not a distortion to avoid: the
+        // background stretches too, and they have to agree.
+        const latMid = p.lat + span / 2 - half;
+        // Angular width -> longitude offset, which is the same thing only at
+        // the equator; near the poles a degree of longitude is a lot less.
+        const dLon = (span * p.aspect / 2) / Math.max(Math.cos(latMid), 0.05);
+        const left = projectDir(latMid, p.lon - dLon, v, w, h, dirLeft);
+        const right = projectDir(latMid, p.lon + dLon, v, w, h, dirRight);
+        pw = left.front && right.front
+          ? Math.abs(right.px - left.px)
+          : ph * p.aspect;
       }
 
       // NDC extent of the sprite around its anchor, so it stays on screen for
@@ -516,7 +537,7 @@
       // and below 98° in portrait. Everything here is screen-space, so the
       // rectangle test is exact.
       const spanY = 2 * ph / h;
-      const spanX = 2 * ph * p.aspect / w;
+      const spanX = 2 * pw / w;
       const up = p.centered ? spanY / 2 : spanY;    // how far it reaches above
       const down = p.centered ? spanY / 2 : 0;      // the anchor, and below
       let show = anchor.front, px = 0, py = 0;
@@ -537,9 +558,11 @@
         }
       }
       if (show) {
-        if (Math.abs(ph - p.lastH) > 0.5) {
+        if (Math.abs(ph - p.lastH) > 0.5 || Math.abs(pw - p.lastW) > 0.5) {
           p.img.style.height = ph.toFixed(1) + "px";
+          p.img.style.width = pw.toFixed(1) + "px";
           p.lastH = ph;
+          p.lastW = pw;
         }
         p.node.style.transform =
           `translate(-50%, ${p.anchor}) translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;

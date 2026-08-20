@@ -128,12 +128,31 @@ world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
   Measuring vertically also lands the sprite's top exactly on the projected
   head, which the hypotenuse never did.
 
+  **Width is measured, not inferred** (fixed 2026-08-20, same day, one round
+  later). Deriving it as height × the image's aspect assumes the projection
+  stretches both axes alike, and it doesn't: at an off-axis angle it magnifies
+  by sec² *along* the displacement but only sec *across* it. So a prop whose
+  width tracks its height balloons sideways as you look up or down — Snake
+  Mountain, 30° and dead ahead, was drawn 675px wide at 60° of pitch where it
+  should have been 341. The width now comes from projecting the two sides of
+  the prop's angular width and measuring how far apart they land horizontally,
+  which means `pano.css` no longer sets `width: auto` on `.prop img` — pano.js
+  writes both dimensions every frame.
+
+  The sprite therefore stretches, and that is correct rather than a distortion
+  to avoid: near the edge of a wide view the background stretches too, and the
+  two have to agree. What a sprite still can't do is *skew* — the true
+  projection of an upright billboard off-axis is a trapezoid, and an `<img>` is
+  a rectangle. That approximation is visible only right at the frame edge.
+
   If you touch the sizing, check it against the painted-in posts of
   `pano-hub.webp`, which scale with the background by construction — and check
-  it **across pitch, not just zoom**. Both bugs here were invisible head-on: put
-  a test prop of the same 30° span over a post, then compare their rendered
-  heights as you pitch. A correct prop holds a constant ratio to the post; the
-  ratio drifting with pitch is exactly this bug.
+  it **across pitch and off-axis yaw, not just zoom**. Every bug here was
+  invisible head-on and level. The rig: a test prop of the same 30° span laid
+  over a post, comparing rendered width *and* height. A correct prop holds a
+  constant ratio to the post in both; a ratio that drifts as you pitch or turn
+  is exactly this family of bug. Measured across pitch 0→40 the width ratio ran
+  0.364 → 0.475 before and holds 0.361 → 0.375 after.
 - `data-src` is a transparent image, cropped tight to its alpha so the bottom
   edge really is the figure's feet. `make_sprites.py` generates placeholder
   sprites procedurally; real art goes in `images/` the same way (see

@@ -118,7 +118,7 @@ body.leaving #stage { opacity: 0; transition-duration: .25s; }
   -webkit-tap-highlight-color: transparent;
 }
 .prop img {
-  display: block; width: auto;        /* height is set per-frame by pano.js */
+  display: block;                     /* both dimensions set per-frame by pano.js */
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, .5));
   transition: filter .18s ease, transform .18s ease;
   transform-origin: 50% 100%;
