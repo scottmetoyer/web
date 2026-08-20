@@ -478,13 +478,25 @@
       // view: the projection is rectilinear, so it stretches away from the view
       // axis, and a prop sized that way drifts out of scale with the background
       // as you zoom — visibly shrinking as you zoom in.
+      //
+      // Take the *vertical* distance between those ends, not the straight-line
+      // distance. A meridian is vertical on screen only while you are level
+      // with it: pitch the view and meridians tilt toward a vanishing point, so
+      // the span's two ends separate horizontally as well. The sprite is an
+      // upright <img> whose height is a vertical extent, so measuring the
+      // hypotenuse — which is what this did until 2026-08-20 — sizes it by a
+      // length it does not occupy, and it grows against the background as you
+      // look up or down. The error is 1/cos of that tilt: nothing dead ahead at
+      // any pitch, 4% for a prop 35° off-axis with the view pitched 25°, and 4x
+      // out near the edge of the sphere. Vertical also puts the sprite's top
+      // exactly on the projected head, which the hypotenuse never did.
       let ph = 0;
       if (anchor.front) {
         const half = p.centered ? span / 2 : 0;   // bottom-anchored: feet == anchor
         const foot = p.centered ? projectDir(p.lat - half, p.lon, v, w, h, dirFoot) : anchor;
         const head = projectDir(p.lat + span - half, p.lon, v, w, h, dirHead);
         ph = foot.front && head.front
-          ? Math.hypot(head.px - foot.px, head.py - foot.py)
+          ? Math.abs(head.py - foot.py)
           // An end behind the camera has no projection; fall back to the
           // on-axis size, which is right at the centre and never absurd.
           : h * Math.tan(Math.min(span, Math.PI * 0.98) / 2) / v.t;

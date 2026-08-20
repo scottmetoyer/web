@@ -109,14 +109,31 @@ world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
   what keeps it planted: zoom in and it grows with the scene. Its pixel height
   is found each frame by projecting *both ends* of the vertical span it occupies
   in the world — its anchor, and the point `data-height` degrees above that —
-  and measuring how far apart they land on screen. Sizing it by angle alone
+  and measuring **how far apart they land vertically**. Sizing it by angle alone
   (`data-height / fov * viewportHeight`) looks right but is only accurate near
   the middle of a narrow view: the projection is rectilinear, so it stretches
   away from the view axis. That approximation made the prop 32% oversized at
   100° fov and 2% undersized at 20°, so it visibly shrank against the background
-  as you zoomed in — fixed 2026-08-13. If you touch the sizing, check it against
-  the painted-in posts of `pano-hub.webp`, which scale with the background by
-  construction.
+  as you zoomed in — fixed 2026-08-13.
+
+  **Vertical distance, not the hypotenuse between the two ends** — that was the
+  2026-08-13 fix's own bug, fixed 2026-08-20. A meridian only runs straight up
+  the screen while you are level with it; pitch the view and meridians tilt
+  toward a vanishing point, so the span's ends separate horizontally too. A
+  sprite is an upright `<img>` whose height is a vertical extent, so measuring
+  the hypotenuse sizes it by a length it doesn't occupy, and it swells against
+  the background as you look up or down. The error is 1/cos of that tilt: zero
+  for a prop dead ahead at any pitch, 4% at 35° off-axis with the view pitched
+  25°, 23% at 55° off-axis pitched 35°, and 4× out near the edge of the sphere.
+  Measuring vertically also lands the sprite's top exactly on the projected
+  head, which the hypotenuse never did.
+
+  If you touch the sizing, check it against the painted-in posts of
+  `pano-hub.webp`, which scale with the background by construction — and check
+  it **across pitch, not just zoom**. Both bugs here were invisible head-on: put
+  a test prop of the same 30° span over a post, then compare their rendered
+  heights as you pitch. A correct prop holds a constant ratio to the post; the
+  ratio drifting with pitch is exactly this bug.
 - `data-src` is a transparent image, cropped tight to its alpha so the bottom
   edge really is the figure's feet. `make_sprites.py` generates placeholder
   sprites procedurally; real art goes in `images/` the same way (see
