@@ -12,7 +12,10 @@ Only needs numpy — PNG encoding is done here with zlib to avoid a Pillow
 dependency. Add a room by writing a render function and listing it in SCENES.
 """
 
+import os
+import shutil
 import struct
+import subprocess
 import sys
 import zlib
 
@@ -22,6 +25,7 @@ from make_sprites import read_png_rgba
 
 W, H = 2048, 1024
 GROUND = -1.6          # eye height above the floor plane, in metres-ish
+GRASS_TILE = 2.2       # world units covered by one repeat of the grass texture
 
 
 def directions():
@@ -40,6 +44,59 @@ def floor_plane(dx, dy, dz):
     t = GROUND / np.minimum(dy, -1e-4)
     px, pz = dx * t, dz * t
     return px, pz, np.sqrt(px * px + pz * pz)
+
+
+def mip_chain(path):
+    """A tiling texture plus successive 2x box downsamples of it.
+
+    The ground needs the pyramid because the floor plane runs all the way to
+    the horizon: near your feet one panorama pixel covers a fraction of a
+    texel, and a few degrees above that it covers hundreds. Sampling the
+    full-resolution grass everywhere turns the middle distance into a
+    shimmering moire of aliased blades. Each pixel instead reads from the level
+    whose texels are about its own size on the floor.
+    """
+    levels = [read_png_rgba(path)[:, :, :3].astype(np.float64)]
+    while min(levels[-1].shape[:2]) > 1:
+        m = levels[-1]
+        h, w = m.shape[0] // 2 * 2, m.shape[1] // 2 * 2
+        levels.append((m[0:h:2, 0:w:2] + m[1:h:2, 0:w:2] +
+                       m[0:h:2, 1:w:2] + m[1:h:2, 1:w:2]) / 4.0)
+    return levels
+
+
+def ground_texture(levels, px, pz, dist, tile):
+    """Tile `levels` across the floor plane, picking a level per pixel.
+
+    `tile` is how many world units one repeat of the texture covers. The level
+    comes from how much floor a single panorama pixel spans, which is not the
+    same in both directions: across the view it is just distance times the
+    pixel's longitude step, but along it the floor stretches with the square of
+    the distance, because a pixel nearer the horizon is aimed at a shallower
+    angle. Take the larger of the two — blurring slightly too much is invisible
+    next to aliasing.
+    """
+    dlat, dlon = np.pi / H, 2.0 * np.pi / W
+    radial = dlat * (dist * dist + GROUND * GROUND) / abs(GROUND)
+    across = dist * dlon
+    texels = np.maximum(radial, across) / tile * levels[0].shape[1]
+    level = np.log2(np.maximum(texels, 1.0))
+
+    out = np.zeros(px.shape + (3,), np.float64)
+    for i, m in enumerate(levels):
+        # Tent weights, so each pixel is a blend of its two nearest levels and
+        # the transition between them never shows as a seam.
+        wgt = np.clip(1.0 - np.abs(level - i), 0.0, 1.0)
+        if i == len(levels) - 1:
+            wgt = np.where(level > i, 1.0, wgt)       # nothing coarser to fade into
+        hit = wgt > 0.0
+        if not hit.any():
+            continue
+        th, tw = m.shape[:2]
+        ui = (np.mod(px[hit] / tile, 1.0) * tw).astype(int) % tw
+        vi = (np.mod(pz[hit] / tile, 1.0) * th).astype(int) % th
+        out[hit] += m[vi, ui] * wgt[hit][:, None]
+    return out
 
 
 def angular_dist(lon, lat, t_lon, t_lat):
@@ -94,13 +151,15 @@ def hub():
     glow = np.exp(-(sun / 0.035) ** 2) + np.exp(-(sun / 0.30) ** 2) * 0.35
     sky += np.array([255.0, 244.0, 214.0]) * np.clip(glow, 0.0, 1.0)[..., None]
 
+    # Grass, tiled across the floor plane. This used to be a grey checkerboard
+    # with grid lines — useful while calibrating the projection, but the plain
+    # is meant to be a place, not a test chart, and the cardinal posts below
+    # still say which way you are facing.
     px, pz, dist = floor_plane(dx, dy, dz)
-    checker = (np.floor(px) + np.floor(pz)) % 2.0
-    ground = np.where(checker[..., None] > 0.5,
-                      np.array([62.0, 66.0, 72.0]), np.array([92.0, 98.0, 106.0]))
-    line = np.minimum(np.abs(px - np.round(px)), np.abs(pz - np.round(pz)))
-    ground += (np.array([190.0, 200.0, 210.0]) - ground) * \
-        np.clip(1.0 - line * 24.0, 0.0, 1.0)[..., None] * 0.6
+    ground = ground_texture(mip_chain("images/tex-grass.png"), px, pz, dist, GRASS_TILE)
+    # Warm the near ground toward the sun a little, so the lawn isn't a flat
+    # slab of one green, and haze it into the horizon colour with distance.
+    ground *= (1.0 + 0.10 * np.clip(1.0 - dist / 14.0, 0.0, 1.0))[..., None]
     ground += (horizon - ground) * np.clip(dist / 26.0, 0.0, 1.0)[..., None]
 
     img = np.where((dy > 0.0)[..., None], sky, ground)
@@ -240,6 +299,27 @@ SCENES = {"hub": hub, "void": void, "hall": hall}
 BAKED = {}
 
 
+# Rooms whose panorama is stored as WebP rather than PNG, and at what quality.
+# A procedural sky-and-gradient is small either way, but a photographic ground
+# is not: the grassy hub is 1.5MB as a PNG and 433KB at q90, the same picture.
+# This is a property of the room and not a flag on purpose — a flag you forgot
+# to pass would leave a stale .webp beside a fresh .png, with the site quietly
+# serving the old one.
+WEBP = {"hub": 90}
+
+
+def encode_webp(png_path, quality):
+    """Re-encode a finished panorama, and drop the PNG. Needs cwebp."""
+    if not shutil.which("cwebp"):
+        print("  ! cwebp not installed (brew install webp) — keeping the PNG")
+        return png_path
+    out = os.path.splitext(png_path)[0] + ".webp"
+    subprocess.run(["cwebp", "-quiet", "-q", str(quality), png_path, "-o", out],
+                   check=True)
+    os.remove(png_path)
+    return out
+
+
 def _box_down(arr, n_out, axis):
     """Area-average `arr` down to n_out samples along `axis`."""
     n_in = arr.shape[axis]
@@ -351,7 +431,9 @@ def main(argv) -> int:
             img = bake(img, art, yaw, pitch, height)
             print(f"  baked {art} at yaw {yaw:g}°, {height:g}° tall")
         write_png(out, np.clip(img, 0.0, 255.0).astype(np.uint8))
-        print(f"wrote {out} ({W}x{H})")
+        if name in WEBP:
+            out = encode_webp(out, WEBP[name])
+        print(f"wrote {out} ({W}x{H}, {os.path.getsize(out) // 1024}KB)")
     return 0
 
 

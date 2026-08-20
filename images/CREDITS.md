@@ -140,3 +140,19 @@ License: Public domain (CC0 1.0)
 License: Public domain (CC0 1.0)
 
 Fragments of the above, cut as rotated rect/tri/wedge/shear sections and layered over `sprite-suit.png` by `glitch_sprite.py --seed 11 --fragments 26`. Same dimensions as the base, so the prop's anchor is unchanged.
+
+## `tex-grass.png`
+
+"Mowed fresh green seamless healthy lawn grass turf texture.jpg", by *Sisters.seamless* — https://commons.wikimedia.org/wiki/File:Mowed%20fresh%20green%20seamless%20healthy%20lawn%20grass%20turf%20texture.jpg
+
+License: CC0 (public domain)
+
+Not a sprite: this is the tiling texture the plain's ground is made of.
+Downsampled from the 1556x1556 original to a 512x512 tile
+(`sips -s format png -z 512 512`), which is plenty once `GRASS_TILE` repeats it
+every 2.2 world units. It is seamless, which is the whole reason for choosing
+it — a tiling ground shows every edge.
+
+`make_panos.py` reads it at generate time, so it is a build input rather than
+something the site serves; `./make_panos.py hub` rebuilds `pano-hub.webp` from
+it.

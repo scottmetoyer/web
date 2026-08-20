@@ -30,7 +30,7 @@
     return v == null ? dflt : v !== "0" && v !== "false";
   };
 
-  const SRC        = q.get("img") || data.pano || "images/pano-hub.png";
+  const SRC        = q.get("img") || data.pano || "images/pano-hub.webp";
   const editMode   = flag("edit", false);   // ?edit=1 turns on the room editor
   const FOV_MIN    = 25, FOV_MAX = 110;
   const PITCH_MAX  = 85 * Math.PI / 180;   // never quite reach the poles
@@ -820,7 +820,7 @@
     const propBox = propLayer || stage.appendChild(el("div", { id: "props" }));
     const hotBox = nav || stage.appendChild(el("nav", { id: "hotspots" }));
 
-    let bgName = baseName(data.pano) || "pano-hub.png";
+    let bgName = baseName(data.pano) || "pano-hub.webp";
     let brush = null;                        // what right-click will place
     let selected = null, moving = null, movePointer = null;
     let downAt = null, dragging = false;     // for the click-vs-drag threshold

@@ -15,7 +15,8 @@ clicking hotspots painted into the space.
   transitions, and the room editor. Shared by every room.
 - `pano.css` — all the styling, viewer and editor. Shared by every room.
 - `editor.html` — the room editor (see below). Not part of the site graph.
-- `images/pano-*.png` — one panorama per room. Placeholders for now.
+- `images/pano-*.{png,webp}` — one panorama per room. Placeholders for now.
+- `images/tex-grass.png` — the tiling texture the plain's ground is made of.
 - `images/sprite-*.png` — transparent prop images (see Props below).
 - `images/CREDITS.md` — where non-generated art came from, and its license.
 - `make_panos.py` — regenerates those placeholder panoramas.
@@ -114,7 +115,7 @@ world that scales with zoom and pops a dialog. Add one inside a room's `<body>`:
   away from the view axis. That approximation made the prop 32% oversized at
   100° fov and 2% undersized at 20°, so it visibly shrank against the background
   as you zoomed in — fixed 2026-08-13. If you touch the sizing, check it against
-  the painted-in posts of `pano-hub.png`, which scale with the background by
+  the painted-in posts of `pano-hub.webp`, which scale with the background by
   construction.
 - `data-src` is a transparent image, cropped tight to its alpha so the bottom
   edge really is the figure's feet. `make_sprites.py` generates placeholder
@@ -330,7 +331,7 @@ and check the right thing is centered:
       --window-size=900,560 --virtual-time-budget=6000 \
       --screenshot=out.png "http://localhost:8777/?yaw=90"
 
-In `pano-hub.png` the cardinal markers are N=Snake Mountain, E=yellow post,
+In `pano-hub.webp` the cardinal markers are N=Snake Mountain, E=yellow post,
 S=green post, W=blue post, so a screenshot immediately shows whether
 orientation is right. (North used to be a red post; the baked-in mountain
 replaced it.) Note that
@@ -356,6 +357,30 @@ other straight line becomes a sine curve.
 that takes a direction per pixel and returns a colour, so it doubles as a
 template for code-generated panoramas. `./make_panos.py void` rebuilds one.
 
+### The plain's ground is a real texture
+
+`hub()` lays a tiling CC0 grass photo (`images/tex-grass.png`) across its floor
+plane rather than colouring it procedurally — it was a grey checkerboard with
+grid lines until 2026-08-20, which was useful while calibrating the projection
+but made the place read as a test chart. `GRASS_TILE` is how many world units
+one repeat covers.
+
+The part that isn't obvious is **mip-mapping, which is not optional here**. The
+floor runs to the horizon, so a single panorama pixel covers a fraction of a
+texel at your feet and hundreds of them a few degrees higher; sampling the
+full-resolution grass everywhere turns the middle distance into shimmering
+moire. `mip_chain()` builds the halving pyramid once and `ground_texture()`
+picks a level per pixel from how much floor that pixel spans — which differs by
+direction, since the floor stretches with the *square* of the distance along
+your line of sight but only linearly across it. Two levels are blended with
+tent weights so no seam shows where the level changes.
+
+A photographic ground also stops the panorama being cheap to store, so `hub` is
+listed in `WEBP` and written as `pano-hub.webp` (433KB, against 1.5MB as a PNG).
+That is a per-room property rather than a command-line flag deliberately: a flag
+you forgot to pass would leave a stale `.webp` next to a fresh `.png` and the
+site would go on serving the old one.
+
 These are stand-ins. Real art goes in the same place — drop a 2:1 image in
 `images/` and point a room's `data-pano` at it.
 
@@ -378,7 +403,7 @@ Sampling is premultiplied, or the transparent surround bleeds a pale fringe into
 every edge, and the cutout is area-downsampled to its footprint first.
 
 Baking happens at generate time, so keep the source in `images/bake-*.png` and
-let `./make_panos.py hub` redo it — editing `pano-hub.png` by hand would be
+let `./make_panos.py hub` redo it — editing `pano-hub.webp` by hand would be
 silently undone the next time anyone regenerates.
 
 **`BAKED` is empty right now, and that is the interesting part.** Snake Mountain
