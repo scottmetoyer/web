@@ -36,7 +36,7 @@
   const PITCH_MAX  = 85 * Math.PI / 180;   // never quite reach the poles
   const FRICTION   = 0.90;                 // per-frame inertia decay
   const DEG        = 180 / Math.PI;
-  const EDGE       = 0.05;                 // NDC slack on the prop culling test
+  const EDGE       = 4;                    // px of slack on the prop culling test
 
   const view = {
     yaw:   num("yaw", 0) / DEG,
@@ -388,7 +388,6 @@
       lat: (parseFloat(node.dataset.pitch) || 0) / DEG,
       heightDeg: parseFloat(node.dataset.height) || 30,   // angular height
       centered: node.dataset.anchor === "center",
-      anchor: node.dataset.anchor === "center" ? "-50%" : "-100%",
       visible: false, lastH: 0, lastW: 0,
       aspect: 1,          // width/height of the art, for sizing and culling
     };
@@ -492,62 +491,56 @@
       // any pitch, 4% for a prop 35° off-axis with the view pitched 25°, and 4x
       // out near the edge of the sphere. Vertical also puts the sprite's top
       // exactly on the projected head, which the hypotenuse never did.
-      let ph = 0, pw = 0;
+      // Where the prop's edges land, in screen pixels. Both axes are handled
+      // the same way: project the two ends of the span, and the sprite is the
+      // interval between them. Sizing by angle alone
+      // (`data-height / fov * viewportHeight`) is only right near the middle of
+      // a narrow view — the projection is rectilinear, so it stretches away
+      // from the view axis, and a prop sized that way visibly shrank against
+      // the background as you zoomed in (fixed 2026-08-13).
+      //
+      // The sprite is *placed on that interval*, not centred on its anchor.
+      // Centring assumes the anchor sits midway between the edges, and it does
+      // not: tan is convex, so at 65° off-axis the far edge runs out much
+      // further than the near edge is close. A centred rectangle therefore
+      // reached back across the whole frame as a smear, and at 72° — where the
+      // billboard is entirely off-screen and should be invisible — it still
+      // painted 696px of mountain (fixed 2026-08-21). The vertical axis always
+      // worked precisely because it was already placed this way, off the foot.
+      let x0 = 0, y0 = 0, pw = 0, ph = 0;
       if (anchor.front) {
         const half = p.centered ? span / 2 : 0;   // bottom-anchored: feet == anchor
         const foot = p.centered ? projectDir(p.lat - half, p.lon, v, w, h, dirFoot) : anchor;
         const head = projectDir(p.lat + span - half, p.lon, v, w, h, dirHead);
-        ph = foot.front && head.front
-          ? Math.abs(head.py - foot.py)
-          // An end behind the camera has no projection; fall back to the
-          // on-axis size, which is right at the centre and never absurd.
-          : h * Math.tan(Math.min(span, Math.PI * 0.98) / 2) / v.t;
-
-        // Width is measured the same way, and it has to be measured, not
-        // inferred: deriving it from the height and the image's aspect assumes
-        // the projection stretches both axes alike, and it does not. At a
-        // vertical off-axis angle it stretches by sec² along the meridian but
-        // only sec across it, so a prop whose width tracks its height balloons
-        // sideways as you look up or down — Snake Mountain, 30° tall and dead
-        // ahead, came out 2.3x too wide at 60° of pitch (fixed 2026-08-20).
-        // Stretching the sprite is right, not a distortion to avoid: the
-        // background stretches too, and they have to agree.
         const latMid = p.lat + span / 2 - half;
         // Angular width -> longitude offset, which is the same thing only at
         // the equator; near the poles a degree of longitude is a lot less.
         const dLon = (span * p.aspect / 2) / Math.max(Math.cos(latMid), 0.05);
         const left = projectDir(latMid, p.lon - dLon, v, w, h, dirLeft);
         const right = projectDir(latMid, p.lon + dLon, v, w, h, dirRight);
-        pw = left.front && right.front
-          ? Math.abs(right.px - left.px)
-          : ph * p.aspect;
+
+        // An edge past the camera plane projects to infinity, and an edge just
+        // short of it to something absurd. Clamp: it is far off-screen either
+        // way, and the *near* edge is what decides what you can actually see.
+        // Each edge, if it goes, goes off its own side of the frame.
+        const BIG = 20 * w;
+        const clamp = (n) => Math.min(Math.max(n, -BIG), BIG);
+        const lx = left.front ? clamp(left.px) : -BIG;
+        const rx = right.front ? clamp(right.px) : BIG;
+        const fy = foot.front ? clamp(foot.py) : BIG;    // the foot runs off below,
+        const hy = head.front ? clamp(head.py) : -BIG;   // the head off above
+        x0 = Math.min(lx, rx); pw = Math.abs(rx - lx);
+        y0 = Math.min(fy, hy); ph = Math.abs(hy - fy);
       }
 
-      // NDC extent of the sprite around its anchor, so it stays on screen for
-      // exactly as long as any part of it is. The vertical span falls out of
-      // the projection above; the horizontal one is the same pixels through
-      // x's NDC scale, which needs the image's own aspect ratio.
-      //
-      // Culling x on a fixed margin instead — which is what this did until
-      // 2026-08-18 — pops a wide prop while it is still visibly in frame. The
-      // margin has to be half the sprite's width, and no single number is that
-      // for every sprite, zoom and window: pixel width grows as you zoom in,
-      // and NDC is measured against the viewport's. Snake Mountain (as wide as
-      // it is tall, 30°) crossed the old 0.4 margin below 42° fov landscape,
-      // and below 98° in portrait. Everything here is screen-space, so the
-      // rectangle test is exact.
-      const spanY = 2 * ph / h;
-      const spanX = 2 * pw / w;
-      const up = p.centered ? spanY / 2 : spanY;    // how far it reaches above
-      const down = p.centered ? spanY / 2 : 0;      // the anchor, and below
-      let show = anchor.front, px = 0, py = 0;
-      if (show) {
-        show = Math.abs(anchor.ndcX) < 1 + spanX / 2 + EDGE
-            && anchor.ndcY > -1 - up - EDGE
-            && anchor.ndcY < 1 + down + EDGE;
-        px = anchor.px;
-        py = anchor.py;
-      }
+      // Cull on that rectangle. Everything here is screen-space, so the test is
+      // exact: the prop stays while any part of it overlaps the frame and goes
+      // the moment none does. Culling on a fixed NDC margin instead — which is
+      // what this did until 2026-08-18 — popped a wide prop while it was still
+      // visibly in frame, because no single margin is half a sprite's width for
+      // every sprite, zoom and window.
+      let show = anchor.front && x0 + pw > -EDGE && x0 < w + EDGE
+                              && y0 + ph > -EDGE && y0 < h + EDGE;
 
       if (show !== p.visible) {
         p.visible = show;
@@ -564,8 +557,11 @@
           p.lastH = ph;
           p.lastW = pw;
         }
+        // The rectangle's own top-left — no percentage offsets, since the
+        // sprite is placed on its projected interval rather than hung off the
+        // anchor point.
         p.node.style.transform =
-          `translate(-50%, ${p.anchor}) translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
+          `translate(${x0.toFixed(1)}px, ${y0.toFixed(1)}px)`;
       }
     }
   }
